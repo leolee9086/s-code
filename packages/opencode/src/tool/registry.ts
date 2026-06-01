@@ -147,7 +147,7 @@ export const layer: Layer.Layer<
       Effect.fn("ToolRegistry.state")(function* (ctx) {
         const custom: Tool.Def[] = []
 
-        function fromPlugin(id: string, def: ToolDefinition): Tool.Def {
+        function fromPlugin(id: string, def: ToolDefinition, sourcePath?: string): Tool.Def {
           // Plugin tools still expose Zod args publicly; keep that compatibility
           // boxed at the registry boundary and give the LLM the original JSON Schema.
           // Normalize missing args to `{}` once — pre-1.14.49 the code was
@@ -164,6 +164,7 @@ export const layer: Layer.Layer<
             id,
             parameters,
             jsonSchema,
+            sourcePath,
             description: def.description,
             execute: (args, toolCtx) =>
               Effect.gen(function* () {
@@ -217,7 +218,7 @@ export const layer: Layer.Layer<
           const mod = yield* Effect.promise(() => import(pathToFileURL(match).href))
           for (const [id, def] of Object.entries(mod)) {
             if (!isPluginTool(def)) continue
-            custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
+            custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def, match))
           }
         }
 
@@ -356,6 +357,7 @@ export const layer: Layer.Layer<
             id: tool.id,
             description: [
               output.description,
+              tool.sourcePath ? `Source: ${tool.sourcePath}` : undefined,
               tool.id === TaskTool.id ? yield* describeTask(input.agent) : undefined,
               tool.id === SkillTool.id ? yield* describeSkill(input.agent) : undefined,
             ]
