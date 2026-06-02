@@ -316,7 +316,9 @@ export function Prompt(props: PromptProps) {
   const fileStyleId = syntax().getStyleId("extmark.file")!
   const agentStyleId = syntax().getStyleId("extmark.agent")!
   const pasteStyleId = syntax().getStyleId("extmark.paste")!
+  const directiveStyleId = syntax().getStyleId("extmark.directive")!
   let promptPartTypeId = 0
+  let directiveTypeId = 0
   const event = useEvent()
 
   event.on(TuiEvent.PromptAppend.type, (evt, { workspace }) => {
@@ -777,6 +779,22 @@ export function Prompt(props: PromptProps) {
         })
       }
     })
+  }
+
+  function highlightDirectivePrefix() {
+    input.extmarks.getAllForTypeId(directiveTypeId).forEach((e) => input.extmarks.delete(e.id))
+    const text = input.plainText
+    const prefixes = ["禁止:", "禁止：", "ban:", "禁语:", "允许:", "允许：", "unban:", "解禁:"]
+    const match = prefixes.find((p) => text.startsWith(p))
+    if (match) {
+      input.extmarks.create({
+        start: 0,
+        end: match.length,
+        virtual: false,
+        styleId: directiveStyleId,
+        typeId: directiveTypeId,
+      })
+    }
   }
 
   function syncExtmarksWithPromptParts() {
@@ -1509,6 +1527,7 @@ export function Prompt(props: PromptProps) {
                 setStore("prompt", "input", value)
                 auto()?.onInput(value)
                 syncExtmarksWithPromptParts()
+                highlightDirectivePrefix()
                 setCursorVersion((value) => value + 1)
               }}
               onCursorChange={() => setCursorVersion((value) => value + 1)}
@@ -1556,6 +1575,9 @@ export function Prompt(props: PromptProps) {
                 setInputTarget(r)
                 if (promptPartTypeId === 0) {
                   promptPartTypeId = input.extmarks.registerType("prompt-part")
+                }
+                if (directiveTypeId === 0) {
+                  directiveTypeId = input.extmarks.registerType("prompt-directive")
                 }
                 props.ref?.(ref)
                 setTimeout(() => {

@@ -28,6 +28,8 @@ import { Command } from "../command"
 import { pathToFileURL, fileURLToPath } from "url"
 import { Config } from "@/config/config"
 import { ConfigMarkdown } from "@/config/markdown"
+import { Directive } from "@/content-filter/directive"
+import { PhraseBan } from "@/content-filter/phrase-ban"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { SessionProcessor } from "./processor"
@@ -1067,7 +1069,41 @@ export const layer = Layer.effect(
         return [{ ...part, messageID: info.id, sessionID: input.sessionID }]
       })
 
-      const resolvedParts = yield* Effect.forEach(input.parts, resolvePart, { concurrency: "unbounded" }).pipe(
+      type ActiveDirective = Exclude<Directive.Info, { type: "none" }>
+      const directiveParts: Array<{ directive: ActiveDirective; remaining: string; index: number }> = []
+      for (const [i, part] of input.parts.entries()) {
+        if (part.type !== "text") continue
+        const { directive, remaining } = Directive.parse(part.text)
+        if (directive.type === "none") continue
+        directiveParts.push({ directive, remaining, index: i })
+      }
+      for (const { directive } of directiveParts) {
+        if (directive.type === "ban") {
+          yield* PhraseBan.ban(input.sessionID, directive.phrase)
+          log.info("phrase banned", { sessionID: input.sessionID, phrase: directive.phrase })
+        }
+        if (directive.type === "unban") {
+          yield* PhraseBan.unban(input.sessionID, directive.phrase)
+          log.info("phrase unbanned", { sessionID: input.sessionID, phrase: directive.phrase })
+        }
+      }
+
+      const partsToResolve = input.parts.map((part, i) => {
+        const dp = directiveParts.find((d) => d.index === i)
+        if (dp && part.type === "text" && !dp.remaining.trim()) {
+          return {
+            ...part,
+            text: `[指令已执行: ${dp.directive.type === "ban" ? "禁止" : "允许"} "${dp.directive.phrase}"]`,
+            synthetic: true,
+          }
+        }
+        if (dp && part.type === "text") {
+          return { ...part, text: dp.remaining }
+        }
+        return part
+      })
+
+      const resolvedParts = yield* Effect.forEach(partsToResolve, resolvePart, { concurrency: "unbounded" }).pipe(
         Effect.map((x) => x.flat().map(assign)),
       )
 

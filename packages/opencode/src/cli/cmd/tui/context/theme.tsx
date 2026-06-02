@@ -782,6 +782,13 @@ function getSyntaxRules(theme: Theme) {
       },
     },
     {
+      scope: ["extmark.directive"],
+      style: {
+        foreground: theme.error,
+        bold: true,
+      },
+    },
+    {
       scope: ["comment"],
       style: {
         foreground: theme.syntaxComment,

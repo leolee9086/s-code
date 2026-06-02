@@ -26,6 +26,7 @@ import { NonNegativeInt, PositiveInt, type DeepMutable } from "@opencode-ai/core
 import { ConfigAgent } from "./agent"
 import { ConfigAttachment } from "./attachment"
 import { ConfigCommand } from "./command"
+import { ConfigContentFilter } from "./content-filter"
 import { ConfigFormatter } from "./formatter"
 import { ConfigLayout } from "./layout"
 import { ConfigLSP } from "./lsp"
@@ -243,6 +244,10 @@ export const Info = Schema.Struct({
   }),
   layout: Schema.optional(ConfigLayout.Layout).annotate({ description: "@deprecated Always uses stretch layout." }),
   permission: Schema.optional(ConfigPermission.Info),
+  content_filter: Schema.optional(ConfigContentFilter.Info).annotate({
+    description:
+      "Content filtering rules applied to LLM text output. Patterns can retry (transparent regenerating), warn, or block matched content.",
+  }),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
   attachment: Schema.optional(ConfigAttachment.Info).annotate({
     description: "Attachment processing configuration, including image size limits and resizing behavior",

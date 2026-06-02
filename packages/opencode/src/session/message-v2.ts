@@ -710,6 +710,17 @@ export function fromError(
         },
         { cause: e },
       ).toObject()
+    case e instanceof Error &&
+      "_tag" in e &&
+      typeof (e as Record<string, unknown>)._tag === "string" &&
+      (e as Record<string, unknown>)._tag === "ContentFilterBlockedError":
+      return new APIError(
+        {
+          message: String((e as Record<string, unknown>).message ?? (e as Error).message),
+          isRetryable: true,
+        },
+        { cause: e },
+      ).toObject()
     case e instanceof Error:
       return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()
     default:

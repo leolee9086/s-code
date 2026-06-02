@@ -277,6 +277,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     draggingType: "image" | "@mention" | null
     mode: "normal" | "shell"
     applyingHistory: boolean
+    directivePrefix: string | null
   }>({
     popover: null,
     historyIndex: -1,
@@ -285,6 +286,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     draggingType: null,
     mode: "normal",
     applyingHistory: false,
+    directivePrefix: null,
   })
   const [picker, setPicker] = createStore({
     projectOpen: false,
@@ -922,6 +924,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       closePopover()
     }
 
+    const directivePrefixes = ["禁止:", "禁止：", "ban:", "禁语:", "允许:", "允许：", "unban:", "解禁:"]
+    const matchedDirective = directivePrefixes.find((p) => rawText.startsWith(p))
+    setStore("directivePrefix", matchedDirective ?? null)
+
     resetHistoryNavigation()
 
     mirror.input = true
@@ -1532,6 +1538,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       "font-mono!": store.mode === "shell",
                     }}
                   />
+                  <Show when={store.directivePrefix && prompt.dirty()}>
+                    <span class="absolute top-0 left-0 px-4 pt-4 pointer-events-none whitespace-pre leading-5 text-[13px] font-[440] text-red-500 [font-family:Inter,var(--font-family-sans)]">
+                      {store.directivePrefix}
+                    </span>
+                  </Show>
                   <div
                     data-component={newSession() ? "session-new-design-text" : "session-composer-text"}
                     class="absolute top-0 inset-x-0 px-4 pt-4 pointer-events-none whitespace-nowrap truncate leading-5 text-[13px] font-[440] text-v2-text-text-faint [font-family:Inter,var(--font-family-sans)]"

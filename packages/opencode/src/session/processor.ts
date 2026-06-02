@@ -24,6 +24,7 @@ import { Log } from "@opencode-ai/core/util/log"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@opencode-ai/core/database/database"
+import { ContentFilter } from "@/content-filter/filter"
 import { SessionEvent } from "@opencode-ai/core/session/event"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -666,6 +667,15 @@ export const layer = Layer.effect(
               },
               { text: ctx.currentText.text },
             )).text
+
+            if (!ctx.assistantMessage.summary) {
+              const cfg = yield* config.get()
+              const filterCfg = cfg.content_filter
+              if (filterCfg && ctx.currentText.text.trim()) {
+                yield* ContentFilter.check(ctx.currentText.text, filterCfg, ctx.sessionID)
+              }
+            }
+
             if (!ctx.assistantMessage.summary) {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
               if (flags.experimentalEventSystem) {
