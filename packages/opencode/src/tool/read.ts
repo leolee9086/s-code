@@ -34,6 +34,9 @@ export const Parameters = Schema.Struct({
   limit: Schema.optional(NonNegativeInt).annotate({
     description: "The maximum number of lines to read (defaults to 2000)",
   }),
+  includeMeta: Schema.optional(Schema.Boolean).annotate({
+    description: "Return file metadata (mtime, size, line count) as JSON prefix. Default false.",
+  }),
 })
 
 export const ReadTool = Tool.define(
@@ -241,6 +244,28 @@ export const ReadTool = Tool.define(
         const sliced = items.slice(start, start + limit)
         const truncated = start + sliced.length < items.length
 
+        if (params.includeMeta) {
+          return {
+            title,
+            output: JSON.stringify({
+            mtime: Option.match(stat.mtime, { onNone: () => 0, onSome: (d) => Number(d) }),
+            filePath: filepath,
+            type: "directory",
+              size: Number(stat.size),
+              totalEntries: items.length,
+              startLine: offset,
+              endLine: offset + sliced.length - 1,
+              truncated,
+              entries: sliced,
+            }, null, 2),
+            metadata: {
+              preview: sliced.slice(0, 20).join("\n"),
+              truncated,
+              loaded: [] as string[],
+            },
+          }
+        }
+
         return {
           title,
           output: [
@@ -297,6 +322,32 @@ export const ReadTool = Tool.define(
         return yield* Effect.fail(
           new Error(`Offset ${file.offset} is out of range for this file (${file.count} lines)`),
         )
+      }
+
+      if (params.includeMeta) {
+        const last = file.offset + file.raw.length - 1
+        const next = last + 1
+        const truncated = file.more || file.cut
+        return {
+          title,
+          output: JSON.stringify({
+            mtime: Option.match(stat.mtime, { onNone: () => 0, onSome: (d) => Number(d) }),
+            filePath: filepath,
+            type: "file",
+            size: Number(stat.size),
+            totalLines: file.count,
+            startLine: file.offset,
+            endLine: last,
+            truncated,
+            nextStartLine: truncated ? next : undefined,
+            content: file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n"),
+          }, null, 2),
+          metadata: {
+            preview: file.raw.slice(0, 20).join("\n"),
+            truncated,
+            loaded: loaded.map((item) => item.filepath),
+          },
+        }
       }
 
       let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>\n"].join("\n")

@@ -93,7 +93,20 @@ export const rpc = {
 
     await InstanceRuntime.disposeAllInstances()
     if (server) await server.stop(true)
+    process.exit(0)
   },
 }
+
+const parentPid = process.ppid
+const watchdog = setInterval(() => {
+  try {
+    process.kill(parentPid, 0)
+  } catch {
+    clearInterval(watchdog)
+    Log.Default.info("parent process died, worker exiting")
+    process.exit(0)
+  }
+}, 2000)
+watchdog.unref()
 
 Rpc.listen(rpc)

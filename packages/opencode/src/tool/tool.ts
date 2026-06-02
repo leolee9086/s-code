@@ -49,6 +49,12 @@ export interface ExecuteResult<M extends Metadata = Metadata> {
   metadata: M
   output: string
   attachments?: Omit<SessionLegacy.FilePart, "id" | "sessionID" | "messageID">[]
+  /** 工具被策略规则拦截，未能执行。
+   *  不设置或 undefined 表示正常执行。 */
+  intercepted?: {
+    rule: string
+    reason: string
+  }
 }
 
 export interface Def<
@@ -128,6 +134,16 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
             ),
           )
           const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, ctx)
+          if (result.intercepted) {
+            return {
+              ...result,
+              output: `[Intercepted] ${result.intercepted.reason}`,
+              metadata: {
+                ...result.metadata,
+                intercepted: result.intercepted,
+              },
+            }
+          }
           if (result.metadata.truncated !== undefined) {
             return result
           }

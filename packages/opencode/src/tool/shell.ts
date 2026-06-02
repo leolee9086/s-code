@@ -22,6 +22,13 @@ import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
+import { evaluate as checkGitRules, loadRules } from "./shell/git-guard"
+
+let loadedGitRules: ReturnType<typeof loadRules> | null = null
+function getGitRules(projectDir?: string) {
+  if (!loadedGitRules) loadedGitRules = loadRules(projectDir)
+  return loadedGitRules
+}
 
 export { Parameters } from "./shell/prompt"
 
@@ -626,6 +633,33 @@ export const ShellTool = Tool.define(
                   const scan = yield* collect(tree.rootNode, cwd, ps, shell, instanceCtx)
                   if (!containsPath(cwd, instanceCtx)) scan.dirs.add(cwd)
                   yield* ask(ctx, scan)
+
+                  const gitCheck = checkGitRules(params.command, getGitRules(instanceCtx.worktree || instanceCtx.directory))
+                  if (gitCheck.deny) {
+                    return {
+                      title: params.description || "shell",
+                      output: gitCheck.deny.rule.reason,
+                      metadata: {},
+                      intercepted: {
+                        rule: gitCheck.deny.rule.pattern,
+                        reason: gitCheck.deny.rule.reason,
+                      },
+                    }
+                  }
+                  if (gitCheck.ask && gitCheck.ask.length > 0) {
+                    const reasons = gitCheck.ask.map(m =>
+                      `  \`${m.subcommand.slice(0, 80)}\` → ${m.rule.reason}`
+                    ).join("\n")
+                    yield* ctx.ask({
+                      permission: "git",
+                      patterns: [params.command],
+                      always: ["*"],
+                      metadata: {
+                        command: params.command,
+                        gitWarnings: reasons,
+                      },
+                    })
+                  }
                 }),
               )
 

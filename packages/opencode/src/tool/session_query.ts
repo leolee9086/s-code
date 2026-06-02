@@ -13,8 +13,8 @@ const Parameters = Schema.Struct({
   query: Schema.String.annotate({
     description: `只读 SQL 查询，仅允许 SELECT / PRAGMA / EXPLAIN。${SCHEMA_HINT}`,
   }),
-  channel: Schema.String.annotate({ description: "目标数据库 channel：latest(全局版)、dev(源码模式)、local(自构建)" })
-    .pipe(Schema.optional, Schema.withDecodingDefault(Effect.succeed("dev"))),
+  channel: Schema.String.annotate({ description: "目标数据库 channel：latest(全局版)、dev(源码模式)、local(自构建)，不传则查询所有 channel" })
+    .pipe(Schema.optional),
 })
 
 function resolveDataDir(): string {
@@ -42,40 +42,59 @@ export const SessionQueryTool = Tool.define(
           validateReadOnly(params.query)
 
           const base = resolveDataDir()
-          const channel = params.channel
-          const file = channel === "latest"
-            ? path.join(base, "opencode.db")
-            : path.join(base, `opencode-${channel}.db`)
+          const channels = params.channel
+            ? [params.channel]
+            : (yield* Effect.promise(async () => {
+                const glob = new Bun.Glob("opencode*.db")
+                const files: string[] = []
+                for await (const f of glob.scan({ cwd: base, absolute: false })) {
+                  if (f.endsWith("-shm") || f.endsWith("-wal")) continue
+                  const name = f.replace(/^opencode-?/, "").replace(/\.db$/, "") || "latest"
+                  files.push(name)
+                }
+                return files.sort()
+              }))
 
-          const exists = yield* Effect.promise(() => Bun.file(file).exists())
-          if (!exists) {
-            return { output: `数据库不存在: ${file}`, title: "session-query", metadata: {} }
+          const results: string[] = []
+          for (const channel of channels) {
+            const file = channel === "latest"
+              ? path.join(base, "opencode.db")
+              : path.join(base, `opencode-${channel}.db`)
+
+            const exists = yield* Effect.promise(() => Bun.file(file).exists())
+            if (!exists) continue
+
+            const result = yield* Effect.try({
+              try: () => {
+                const db = new Database(file, { readonly: true })
+                try {
+                  const rows = db.query(params.query).all() as Record<string, unknown>[]
+                  if (rows.length === 0) return ""
+                  const header = Object.keys(rows[0]).join(" | ")
+                  const separator = Object.keys(rows[0]).map(() => "---").join(" | ")
+                  const body = rows.map(r => Object.values(r).map(v => {
+                    if (v === null || v === undefined) return ""
+                    const s = typeof v === "object" ? JSON.stringify(v) : String(v)
+                    return s.length > 120 ? s.slice(0, 117) + "..." : s
+                  }).join(" | "))
+                  return `=== ${channel} (${rows.length} rows) ===\n| ${header} |\n| ${separator} |\n| ${body.join(" |\n| ")} |`
+                } finally {
+                  db.close()
+                }
+              },
+              catch: (e: any) => `=== ${channel} ===\n查询错误: ${e.message}`,
+            })
+
+            if (result) results.push(result)
           }
 
-          const result = yield* Effect.try({
-            try: () => {
-              const db = new Database(file, { readonly: true })
-              try {
-                const rows = db.query(params.query).all() as Record<string, unknown>[]
-                if (rows.length === 0) return "查询完成，无结果"
-                const header = Object.keys(rows[0]).join(" | ")
-                const separator = Object.keys(rows[0]).map(() => "---").join(" | ")
-                const body = rows.map(r => Object.values(r).map(v => {
-                  if (v === null || v === undefined) return ""
-                  const s = typeof v === "object" ? JSON.stringify(v) : String(v)
-                  return s.length > 120 ? s.slice(0, 117) + "..." : s
-                }).join(" | "))
-                return `行数: ${rows.length}\n\n| ${header} |\n| ${separator} |\n| ${body.join(" |\n| ")} |`
-              } finally {
-                db.close()
-              }
-            },
-            catch: (e: any) => `查询错误: ${e.message}`,
-          })
+          if (results.length === 0) {
+            return { output: "没有找到可用的数据库", title: "session-query", metadata: {} }
+          }
 
           return {
-            output: result,
-            title: `session-query (${channel})`,
+            output: results.join("\n\n"),
+            title: params.channel ? `session-query (${params.channel})` : "session-query (all channels)",
             metadata: {},
           }
         }).pipe(Effect.orDie),

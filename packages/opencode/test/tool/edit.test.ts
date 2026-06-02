@@ -82,6 +82,23 @@ const makeDirectory = Effect.fn("EditToolTest.makeDirectory")(function* (p: stri
   yield* fs.makeDirectory(p)
 })
 
+const getMtime = Effect.fn("EditToolTest.getMtime")(function* (p: string) {
+  const fs = yield* AppFileSystem.Service
+  const info = yield* fs.stat(p)
+  return Number(info.mtime)
+})
+
+const autoRun = Effect.fn("EditToolTest.autoRun")(function* (
+  args: { filePath: string; oldString: string; newString: string; replaceAll?: boolean },
+) {
+  const fs = yield* AppFileSystem.Service
+  const info = yield* fs.stat(args.filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
+  if (!info) return yield* run({ ...args, mtime: 0, proof: "" })
+  const content = yield* load(args.filePath)
+  const proof = content.split("\n").find(l => l.trim())?.trim() || "fallback-proof"
+  return yield* run({ mtime: Number(info.mtime), proof, ...args })
+})
+
 const onceBus = Effect.fn("EditToolTest.onceBus")(function* (def: typeof FileWatcher.Event.Updated) {
   const events = yield* EventV2Bridge.Service
   const deferred = yield* Deferred.make<void>()
@@ -99,7 +116,7 @@ describe("tool.edit", () => {
       Effect.gen(function* () {
         const test = yield* TestInstance
         const filepath = path.join(test.directory, "newfile.txt")
-        const result = yield* run({ filePath: filepath, oldString: "", newString: "new content" })
+        const result = yield* run({ filePath: filepath, oldString: "", newString: "new content", mtime: 0, proof: "" })
 
         expect(result.metadata.diff).toContain("new content")
         expect(yield* load(filepath)).toBe("new content")
@@ -113,7 +130,7 @@ describe("tool.edit", () => {
         const bom = String.fromCharCode(0xfeff)
         yield* put(filepath, `${bom}using System;\n`)
 
-        const result = yield* run({ filePath: filepath, oldString: "", newString: "using Up;\n" })
+        const result = yield* run({ filePath: filepath, oldString: "", newString: "using Up;\n", mtime: 0, proof: "" })
 
         expect(result.metadata.diff).toContain("-using System;")
         expect(result.metadata.diff).toContain("+using Up;")
@@ -129,7 +146,7 @@ describe("tool.edit", () => {
         const test = yield* TestInstance
         const filepath = path.join(test.directory, "nested", "dir", "file.txt")
 
-        yield* run({ filePath: filepath, oldString: "", newString: "nested file" })
+        yield* run({ filePath: filepath, oldString: "", newString: "nested file", mtime: 0, proof: "" })
 
         expect(yield* load(filepath)).toBe("nested file")
       }),
@@ -140,7 +157,7 @@ describe("tool.edit", () => {
         const test = yield* TestInstance
         const updated = yield* onceBus(FileWatcher.Event.Updated)
 
-        yield* run({ filePath: path.join(test.directory, "new.txt"), oldString: "", newString: "content" })
+        yield* run({ filePath: path.join(test.directory, "new.txt"), oldString: "", newString: "content", mtime: 0, proof: "" })
         yield* Deferred.await(updated)
       }),
     )
@@ -153,7 +170,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "existing.txt")
         yield* put(filepath, "old content here")
 
-        const result = yield* run({ filePath: filepath, oldString: "old content", newString: "new content" })
+        const result = yield* autoRun({ filePath: filepath, oldString: "old content", newString: "new content" })
 
         expect(result.output).toContain("Edit applied successfully")
         expect(yield* load(filepath)).toBe("new content here")
@@ -167,7 +184,7 @@ describe("tool.edit", () => {
         const bom = String.fromCharCode(0xfeff)
         yield* put(filepath, `${bom}using System;\nclass Test {}\n`)
 
-        const result = yield* run({ filePath: filepath, oldString: "using System;", newString: "using Up;" })
+        const result = yield* autoRun({ filePath: filepath, oldString: "using System;", newString: "using Up;" })
 
         expect(result.metadata.diff).toContain("-using System;")
         expect(result.metadata.diff).toContain("+using Up;")
@@ -183,7 +200,7 @@ describe("tool.edit", () => {
       Effect.gen(function* () {
         const test = yield* TestInstance
         expect(
-          (yield* fail({ filePath: path.join(test.directory, "nonexistent.txt"), oldString: "old", newString: "new" }))
+          (yield* fail({ filePath: path.join(test.directory, "nonexistent.txt"), oldString: "old", newString: "new", mtime: 0, proof: "" }))
             .message,
         ).toContain("not found")
       }),
@@ -195,7 +212,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "content")
 
-        expect((yield* fail({ filePath: filepath, oldString: "same", newString: "same" })).message).toContain(
+        expect((yield* fail({ filePath: filepath, oldString: "same", newString: "same", mtime: 0, proof: "content" })).message).toContain(
           "identical",
         )
       }),
@@ -207,7 +224,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "actual content")
 
-        expect(yield* fail({ filePath: filepath, oldString: "not in file", newString: "replacement" })).toBeInstanceOf(
+        expect(yield* fail({ filePath: filepath, oldString: "not in file", newString: "replacement", mtime: 0, proof: "actual" })).toBeInstanceOf(
           Error,
         )
       }),
@@ -219,7 +236,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "foo bar foo baz foo")
 
-        yield* run({ filePath: filepath, oldString: "foo", newString: "qux", replaceAll: true })
+        yield* autoRun({ filePath: filepath, oldString: "foo", newString: "qux", replaceAll: true })
 
         expect(yield* load(filepath)).toBe("qux bar qux baz qux")
       }),
@@ -232,7 +249,7 @@ describe("tool.edit", () => {
         yield* put(filepath, "original")
         const updated = yield* onceBus(FileWatcher.Event.Updated)
 
-        yield* run({ filePath: filepath, oldString: "original", newString: "modified" })
+        yield* autoRun({ filePath: filepath, oldString: "original", newString: "modified" })
         yield* Deferred.await(updated)
       }),
     )
@@ -245,7 +262,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "line1\nline2\nline3")
 
-        yield* run({ filePath: filepath, oldString: "line2", newString: "new line 2\nextra line" })
+        yield* autoRun({ filePath: filepath, oldString: "line2", newString: "new line 2\nextra line" })
 
         expect(yield* load(filepath)).toBe("line1\nnew line 2\nextra line\nline3")
       }),
@@ -257,7 +274,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "line1\r\nold\r\nline3")
 
-        yield* run({ filePath: filepath, oldString: "old", newString: "new" })
+        yield* autoRun({ filePath: filepath, oldString: "old", newString: "new" })
 
         expect(yield* load(filepath)).toBe("line1\r\nnew\r\nline3")
       }),
@@ -269,7 +286,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "content")
 
-        expect((yield* fail({ filePath: filepath, oldString: "", newString: "" })).message).toContain("identical")
+        expect((yield* fail({ filePath: filepath, oldString: "", newString: "", mtime: 0, proof: "content" })).message).toContain("identical")
       }),
     )
 
@@ -279,7 +296,7 @@ describe("tool.edit", () => {
         const dirpath = path.join(test.directory, "adir")
         yield* makeDirectory(dirpath)
 
-        expect((yield* fail({ filePath: dirpath, oldString: "old", newString: "new" })).message).toContain("directory")
+        expect((yield* fail({ filePath: dirpath, oldString: "old", newString: "new", mtime: 0, proof: "" })).message).toContain("directory")
       }),
     )
 
@@ -289,7 +306,7 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "line1\nline2\nline3")
 
-        const result = yield* run({ filePath: filepath, oldString: "line2", newString: "new line a\nnew line b" })
+        const result = yield* autoRun({ filePath: filepath, oldString: "line2", newString: "new line a\nnew line b" })
 
         expect(result.metadata.filediff).toBeDefined()
         expect(result.metadata.filediff.file).toBe(filepath)
@@ -341,7 +358,7 @@ describe("tool.edit", () => {
       const test = yield* TestInstance
       const filePath = path.join(test.directory, "test.txt")
       yield* put(filePath, input.content)
-      yield* run({
+      yield* autoRun({
         filePath,
         oldString: input.oldString,
         newString: input.newString,
@@ -494,6 +511,8 @@ describe("tool.edit", () => {
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "top = 0\nmiddle = keep\nbottom = 0\n")
 
+        const mtime = yield* getMtime(filepath)
+
         const firstAsk = yield* Deferred.make<void>()
         let asks = 0
         const delayedCtx = {
@@ -512,6 +531,8 @@ describe("tool.edit", () => {
             filePath: filepath,
             oldString: "top = 0",
             newString: "top = 1",
+            mtime,
+            proof: "top = 0",
           },
           delayedCtx,
         ).pipe(Effect.forkScoped)
@@ -524,6 +545,8 @@ describe("tool.edit", () => {
               filePath: filepath,
               oldString: "bottom = 0",
               newString: "bottom = 2",
+              mtime,
+              proof: "bottom = 0",
             },
             delayedCtx,
           ),

@@ -116,20 +116,30 @@ describe("tool parameters", () => {
   })
 
   describe("edit", () => {
-    test("accepts all four fields", () => {
-      expect(parse(Edit, { filePath: "/a", oldString: "x", newString: "y", replaceAll: true })).toEqual({
+    test("accepts all six fields", () => {
+      expect(
+        parse(Edit, { filePath: "/a", oldString: "x", newString: "y", replaceAll: true, mtime: 1000, proof: "line" }),
+      ).toEqual({
         filePath: "/a",
         oldString: "x",
         newString: "y",
         replaceAll: true,
+        mtime: 1000,
+        proof: "line",
       })
     })
     test("replaceAll is optional", () => {
-      const parsed = parse(Edit, { filePath: "/a", oldString: "x", newString: "y" })
+      const parsed = parse(Edit, { filePath: "/a", oldString: "x", newString: "y", mtime: 0, proof: "" })
       expect(parsed.replaceAll).toBeUndefined()
     })
     test("rejects missing filePath", () => {
-      expect(accepts(Edit, { oldString: "x", newString: "y" })).toBe(false)
+      expect(accepts(Edit, { oldString: "x", newString: "y", mtime: 0, proof: "" })).toBe(false)
+    })
+    test("rejects missing mtime", () => {
+      expect(accepts(Edit, { filePath: "/a", oldString: "x", newString: "y", proof: "" })).toBe(false)
+    })
+    test("rejects missing proof", () => {
+      expect(accepts(Edit, { filePath: "/a", oldString: "x", newString: "y", mtime: 0 })).toBe(false)
     })
   })
 

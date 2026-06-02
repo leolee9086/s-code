@@ -69,12 +69,20 @@ exports[`tool parameters JSON Schema (wire shape) edit 1`] = `
       "description": "The absolute path to the file to modify",
       "type": "string",
     },
+    "mtime": {
+      "description": "File mtime (ms) from prior Read. Use 0 for new files (oldString="").",
+      "type": "number",
+    },
     "newString": {
       "description": "The text to replace it with (must be different from oldString)",
       "type": "string",
     },
     "oldString": {
       "description": "The text to replace",
+      "type": "string",
+    },
+    "proof": {
+      "description": "Non-empty lines from file as proof of current content. Use empty string for new files (oldString="").",
       "type": "string",
     },
     "replaceAll": {
@@ -86,6 +94,8 @@ exports[`tool parameters JSON Schema (wire shape) edit 1`] = `
     "filePath",
     "oldString",
     "newString",
+    "mtime",
+    "proof",
   ],
   "type": "object",
 }
@@ -278,6 +288,10 @@ exports[`tool parameters JSON Schema (wire shape) read 1`] = `
     "filePath": {
       "description": "The absolute path to the file or directory to read",
       "type": "string",
+    },
+    "includeMeta": {
+      "description": "Return file metadata (mtime, size, line count) as JSON prefix. Default false.",
+      "type": "boolean",
     },
     "limit": {
       "description": "The maximum number of lines to read (defaults to 2000)",

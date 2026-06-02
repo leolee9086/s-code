@@ -53,6 +53,12 @@ export const Parameters = Schema.Struct({
   replaceAll: Schema.optional(Schema.Boolean).annotate({
     description: "Replace all occurrences of oldString (default false)",
   }),
+  mtime: Schema.Number.annotate({
+    description: "File mtime (ms) from prior Read. Use 0 for new files (oldString=\"\").",
+  }),
+  proof: Schema.String.annotate({
+    description: "Non-empty lines from file as proof of current content. Use empty string for new files (oldString=\"\").",
+  }),
 })
 
 export const EditTool = Tool.define(
@@ -121,6 +127,27 @@ export const EditTool = Tool.define(
               if (info.type === "Directory") throw new Error(`Path is a directory, not a file: ${filePath}`)
               const source = yield* Bom.readFile(afs, filePath)
               contentOld = source.text
+
+              // Staleness verification: mtime + proof (both required)
+              if (Number(info.mtime) !== params.mtime) {
+                // mtime mismatch — check proof as fallback
+                const proofLines = params.proof.split("\n").map(l => l.trim()).filter(Boolean)
+                if (proofLines.length === 0) {
+                  throw new Error(
+                    `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(Number(info.mtime))}). ` +
+                    `Re-read the file with Read (includeMeta: true) and include proof lines with your edit invocation, then try again.`
+                  )
+                }
+                const allFound = proofLines.every(line => contentOld.includes(line))
+                if (!allFound) {
+                  throw new Error(
+                    `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(Number(info.mtime))}). ` +
+                    `Proof verification failed: ${proofLines.filter(l => !contentOld.includes(l)).length} line(s) not found in current file. ` +
+                    `Re-read the file with Read (includeMeta: true) and try again.`
+                  )
+                }
+              }
+              // mtime matches — pass silently
 
               const ending = detectLineEnding(contentOld)
               const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)

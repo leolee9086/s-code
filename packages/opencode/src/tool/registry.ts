@@ -14,6 +14,7 @@ import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { SessionQueryTool } from "./session_query"
+import { SessionMessageReadTool } from "./session_message_read"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -141,6 +142,7 @@ export const layer: Layer.Layer<
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const sessionQuery = yield* SessionQueryTool
+    const sessionMsgRead = yield* SessionMessageReadTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -252,6 +254,7 @@ export const layer: Layer.Layer<
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           session_query: Tool.init(sessionQuery),
+          session_message_read: Tool.init(sessionMsgRead),
         })
 
         return {
@@ -275,6 +278,7 @@ export const layer: Layer.Layer<
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
             tool.session_query,
+            tool.session_message_read,
           ],
           task: tool.task,
           read: tool.read,
