@@ -78,6 +78,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       }
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
+      banned_phrases: {
+        [sessionID: string]: Array<{ phrase: string; grace: number; maxGrace: number }>
+      }
     }>({
       provider_next: {
         all: [],
@@ -97,6 +100,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session: [],
       session_status: {},
       session_diff: {},
+      banned_phrases: {},
       todo: {},
       message: {},
       part: {},
@@ -139,6 +143,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     event.subscribe((event, { workspace }) => {
+      if (event.type === "session.banned_phrases") {
+        setStore("banned_phrases", event.properties.sessionID, event.properties.phrases)
+        return
+      }
       switch (event.type) {
         case "server.instance.disposed":
           void bootstrap()

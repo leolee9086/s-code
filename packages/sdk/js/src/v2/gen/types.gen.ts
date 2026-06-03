@@ -35,6 +35,7 @@ export type Event =
   | EventSessionNextCompactionStarted
   | EventSessionNextCompactionDelta
   | EventSessionNextCompactionEnded
+  | EventSessionBannedPhrases
   | EventFileWatcherUpdated
   | EventSessionCreated
   | EventSessionUpdated
@@ -603,6 +604,7 @@ export type CompactionPart = {
   type: "compaction"
   auto: boolean
   overflow?: boolean
+  head_end_id?: string
   tail_start_id?: string
 }
 
@@ -1027,6 +1029,18 @@ export type GlobalEvent = {
           sessionID: string
           text: string
           include?: string
+        }
+      }
+    | {
+        id: string
+        type: "session.banned_phrases"
+        properties: {
+          sessionID: string
+          phrases: Array<{
+            phrase: string
+            grace: number
+            maxGrace: number
+          }>
         }
       }
     | {
@@ -1501,6 +1515,7 @@ export type GlobalEvent = {
     | SyncEventSessionNextCompactionStarted
     | SyncEventSessionNextCompactionDelta
     | SyncEventSessionNextCompactionEnded
+    | SyncEventSessionBannedPhrases
     | SyncEventSessionCreated
     | SyncEventSessionUpdated
     | SyncEventSessionDeleted
@@ -1569,8 +1584,6 @@ export type PermissionConfig =
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
       websearch?: PermissionActionConfig
-      repo_clone?: PermissionRuleConfig
-      repo_overview?: PermissionRuleConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
       skill?: PermissionRuleConfig
@@ -1826,7 +1839,6 @@ export type Config = {
     build?: AgentConfig
     general?: AgentConfig
     explore?: AgentConfig
-    scout?: AgentConfig
     title?: AgentConfig
     summary?: AgentConfig
     compaction?: AgentConfig
@@ -1883,6 +1895,13 @@ export type Config = {
   instructions?: Array<string>
   layout?: LayoutConfig
   permission?: PermissionConfig
+  content_filter?: {
+    patterns?: Array<{
+      regex: string
+      action: "retry" | "warn" | "block"
+      message?: string
+    }>
+  }
   tools?: {
     [key: string]: boolean
   }
@@ -1897,6 +1916,7 @@ export type Config = {
   compaction?: {
     auto?: boolean
     prune?: boolean
+    head_turns?: number
     tail_turns?: number
     preserve_recent_tokens?: number
     reserved?: number
@@ -3275,6 +3295,22 @@ export type SyncEventSessionNextCompactionEnded = {
   }
 }
 
+export type SyncEventSessionBannedPhrases = {
+  type: "sync"
+  name: "session.banned_phrases.1"
+  id: string
+  seq: number
+  aggregateID: "sessionID"
+  data: {
+    sessionID: string
+    phrases: Array<{
+      phrase: string
+      grace: number
+      maxGrace: number
+    }>
+  }
+}
+
 export type SyncEventSessionCreated = {
   type: "sync"
   name: "session.created.1"
@@ -4162,6 +4198,19 @@ export type EventSessionNextCompactionEnded = {
     sessionID: string
     text: string
     include?: string
+  }
+}
+
+export type EventSessionBannedPhrases = {
+  id: string
+  type: "session.banned_phrases"
+  properties: {
+    sessionID: string
+    phrases: Array<{
+      phrase: string
+      grace: number
+      maxGrace: number
+    }>
   }
 }
 

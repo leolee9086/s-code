@@ -364,6 +364,24 @@ export namespace Compaction {
   export type Ended = typeof Ended.Type
 }
 
+export const BannedPhrases = EventV2.define({
+  type: "session.banned_phrases",
+  ...options,
+  schema: {
+    sessionID: SessionSchema.ID,
+    phrases: Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          phrase: Schema.String,
+          grace: NonNegativeInt,
+          maxGrace: NonNegativeInt,
+        }),
+      ),
+    ),
+  },
+})
+export type BannedPhrases = typeof BannedPhrases.Type
+
 export const All = Schema.Union(
   [
     AgentSwitched,
@@ -392,6 +410,7 @@ export const All = Schema.Union(
     Compaction.Started,
     Compaction.Delta,
     Compaction.Ended,
+    BannedPhrases,
   ],
   {
     mode: "oneOf",

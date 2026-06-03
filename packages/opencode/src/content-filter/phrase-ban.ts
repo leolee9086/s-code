@@ -1,11 +1,13 @@
 import { Effect, Ref } from "effect"
 import type { SessionID } from "@/session/schema"
+import { GlobalBus } from "@/bus/global"
 
 export * as PhraseBan from "./phrase-ban"
 
-interface BannedPhrase {
+export interface BannedPhrase {
   phrase: string
   grace: number
+  maxGrace: number
 }
 
 type BannedMap = Map<string, Map<string, BannedPhrase>>
@@ -14,16 +16,38 @@ const stateRef = Effect.runSync(
   Ref.make<BannedMap>(new Map()),
 )
 
+const emitChange = (sessionID: SessionID) => {
+  const state = Ref.get(stateRef).pipe(
+    Effect.map((s) => {
+      const session = s.get(sessionID)
+      const phrases: BannedPhrase[] = session ? Array.from(session.values()) : []
+      return phrases
+    }),
+  )
+  Effect.runPromise(
+    Effect.map(state, (phrases) => {
+      GlobalBus.emit("event", {
+        payload: {
+          type: "session.banned_phrases",
+          properties: { sessionID, phrases },
+        },
+      })
+    }),
+  ).catch(() => {})
+}
+
 export const ban = (sessionID: SessionID, phrase: string, grace = 1) =>
   Effect.gen(function* () {
     const key = phrase.toLowerCase()
     yield* Ref.update(stateRef, (state) => {
       const session = new Map(state.get(sessionID) ?? [])
-      session.set(key, { phrase: key, grace })
+      const existing = session.get(key)
+      session.set(key, { phrase: key, grace, maxGrace: existing ? existing.maxGrace : grace })
       const next = new Map(state)
       next.set(sessionID, session)
       return next
     })
+    emitChange(sessionID)
   })
 
 export const unban = (sessionID: SessionID, phrase: string) =>
@@ -42,6 +66,7 @@ export const unban = (sessionID: SessionID, phrase: string) =>
       }
       return next
     })
+    emitChange(sessionID)
   })
 
 export const list = (sessionID: SessionID) =>
@@ -49,7 +74,7 @@ export const list = (sessionID: SessionID) =>
     return yield* Ref.get(stateRef).pipe(
       Effect.map((state) => {
         const session = state.get(sessionID)
-        if (!session) return [] as Array<{ phrase: string; grace: number }>
+        if (!session) return [] as BannedPhrase[]
         return Array.from(session.values()).map((b) => ({ phrase: b.phrase, grace: b.grace }))
       }),
     )
@@ -67,6 +92,7 @@ export const check = (sessionID: SessionID, text: string) =>
       if (!lower.includes(key)) continue
       if (bp.grace > 0) {
         bp.grace--
+        emitChange(sessionID)
         continue
       }
       matched = bp.phrase
@@ -83,4 +109,5 @@ export const clear = (sessionID: SessionID) =>
       next.delete(sessionID)
       return next
     })
+    emitChange(sessionID)
   })
