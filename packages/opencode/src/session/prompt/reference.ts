@@ -54,17 +54,17 @@ export function referenceTextPart(input: {
     type: "text",
     synthetic: true,
     text: [
-      `Referenced configured reference ${label}.`,
-      ...(metadata.kind === "local" ? ["Kind: local directory"] : []),
-      ...(metadata.kind === "git" ? ["Kind: git repository"] : []),
-      ...(metadata.repository ? [`Repository: ${metadata.repository}`] : []),
-      ...(metadata.branch ? [`Branch/ref: ${metadata.branch}`] : []),
-      ...(metadata.path ? [`Reference root: ${metadata.path}`] : []),
-      ...(metadata.targetPath ? [`Resolved path: ${metadata.targetPath}`] : []),
+      `引用了已配置的参考 ${label}。`,
+      ...(metadata.kind === "local" ? ["类型：本地目录"] : []),
+      ...(metadata.kind === "git" ? ["类型：git 仓库"] : []),
+      ...(metadata.repository ? [`仓库：${metadata.repository}`] : []),
+      ...(metadata.branch ? [`分支/ref：${metadata.branch}`] : []),
+      ...(metadata.path ? [`参考根目录：${metadata.path}`] : []),
+      ...(metadata.targetPath ? [`已解析路径：${metadata.targetPath}`] : []),
       ...(metadata.problem
-        ? [`Problem: ${metadata.problem}`]
+        ? [`问题：${metadata.problem}`]
         : [
-            "Inspect the configured reference with Read, Glob, and Grep when useful.",
+            "在需要时使用 Read、Glob 和 Grep 检查已配置的参考。",
           ]),
     ].join("\n"),
     metadata: { reference: metadata },

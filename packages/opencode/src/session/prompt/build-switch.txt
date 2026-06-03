@@ -1,5 +1,5 @@
 <system-reminder>
-Your operational mode has changed from plan to build.
-You are no longer in read-only mode.
-You are permitted to make file changes, run shell commands, and utilize your arsenal of tools as needed.
+你的操作模式已从 plan 切换到 build。
+你不再处于只读模式。
+你现在可以对文件进行修改、运行 shell 命令，并根据需要使用你的工具库。
 </system-reminder>

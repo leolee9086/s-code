@@ -71,15 +71,15 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 const decodeMessageInfo = Schema.decodeUnknownExit(SessionLegacy.Info)
 const decodeMessagePart = Schema.decodeUnknownExit(SessionLegacy.Part)
 
-const STRUCTURED_OUTPUT_DESCRIPTION = `Use this tool to return your final response in the requested structured format.
+const STRUCTURED_OUTPUT_DESCRIPTION = `使用此工具以请求的结构化格式返回你的最终回复。
 
-IMPORTANT:
-- You MUST call this tool exactly once at the end of your response
-- The input must be valid JSON matching the required schema
-- Complete all necessary research and tool calls BEFORE calling this tool
-- This tool provides your final answer - no further actions are taken after calling it`
+重要：
+- 你必须在回复结束时精确调用此工具一次
+- 输入必须是符合所需模式的合法 JSON
+- 在调用此工具**之前**完成所有必要的研究和工具调用
+- 此工具提供你的最终答案——调用后不再采取进一步操作`
 
-const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
+const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `重要：用户已请求结构化输出。你必须使用 StructuredOutput 工具来提供你的最终回复。不要以纯文本回复——你必须调用 StructuredOutput 工具，并根据模式格式化你的答案。`
 
 const log = Log.create({ service: "session.prompt" })
 const elog = EffectLogger.create({ service: "session.prompt" })
