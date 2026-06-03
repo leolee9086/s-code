@@ -65,10 +65,6 @@ function getOrCompile(pattern: string): RegExp | null {
   }
 }
 
-function stripGitPrefix(cmd: string): string {
-  return cmd.trim().replace(/^git(\s|$)/, "").trim()
-}
-
 function splitCommandSegments(fullCommand: string): string[] {
   const segments: string[] = []
   let current = ""
@@ -112,8 +108,7 @@ function splitCommandSegments(fullCommand: string): string[] {
 }
 
 function matchRule(segment: string, rules: ShellRule[]): RuleMatch | null {
-  const trimmed = segment.trim()
-  const cmd = stripGitPrefix(trimmed)
+  const cmd = segment.trim()
 
   for (const rule of rules) {
     if (rule.disabled) continue
