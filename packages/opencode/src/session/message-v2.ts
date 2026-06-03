@@ -542,9 +542,11 @@ export function filterCompacted(msgs: Iterable<WithParts>) {
     if (msg.info.role === "user" && completed.has(msg.info.id)) {
       const part = msg.parts.find((item): item is CompactionPart => item.type === "compaction")
       if (!part) continue
-      if (!part.tail_start_id) break
-      retain = part.tail_start_id
-      if (msg.info.id === retain) break
+      if (!part.tail_start_id && !part.head_end_id) break
+      if (part.tail_start_id) {
+        retain = part.tail_start_id
+        if (msg.info.id === retain) break
+      }
       continue
     }
     if (msg.info.role === "user" && completed.has(msg.info.id) && msg.parts.some((part) => part.type === "compaction"))
@@ -572,12 +574,44 @@ export function filterCompacted(msgs: Iterable<WithParts>) {
       )
     : -1
   const tailIndex = part?.tail_start_id ? result.findIndex((msg) => msg.info.id === part.tail_start_id) : -1
+
+  const headCompaction = part
+    ? undefined
+    : result.findLast(
+        (msg) =>
+          msg.info.role === "user" &&
+          msg.parts.some((item): item is CompactionPart => item.type === "compaction" && item.head_end_id !== undefined),
+      )
+  const headPart = headCompaction?.parts.find(
+    (item): item is CompactionPart => item.type === "compaction" && item.head_end_id !== undefined,
+  )
+  const headIndex = headPart?.head_end_id ? result.findIndex((msg) => msg.info.id === headPart.head_end_id) : -1
+
   if (tailIndex >= 0 && tailIndex < compactionIndex && summaryIndex > compactionIndex) {
     return [
       ...result.slice(compactionIndex, summaryIndex + 1),
       ...result.slice(tailIndex, compactionIndex),
       ...result.slice(summaryIndex + 1),
     ]
+  }
+  if (headIndex >= 0 && headCompaction && headIndex < result.length) {
+    const headCompactionIndex = result.indexOf(headCompaction)
+    if (headCompactionIndex >= 0) {
+      const headSummaryIndex = result.findIndex(
+        (msg, index) =>
+          index > headCompactionIndex &&
+          msg.info.role === "assistant" &&
+          msg.info.summary &&
+          msg.info.parentID === headCompaction.info.id,
+      )
+      if (headSummaryIndex > headCompactionIndex) {
+        return [
+          ...result.slice(headCompactionIndex, headSummaryIndex + 1),
+          ...result.slice(0, headIndex + 1),
+          ...result.slice(headSummaryIndex + 1),
+        ]
+      }
+    }
   }
   return result
 }

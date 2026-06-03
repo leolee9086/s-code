@@ -959,7 +959,7 @@ describe("session.compaction.process", () => {
       const part = yield* readCompactionPart(session.id)
       expect(part?.type).toBe("compaction")
       expect(part?.tail_start_id).toBe(keep.id)
-    }).pipe(withCompaction({ config: cfg({ tail_turns: 2, preserve_recent_tokens: 10_000 }) })),
+    }).pipe(withCompaction({ config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 10_000 }) })),
   )
 
   itCompaction.instance(
@@ -985,7 +985,7 @@ describe("session.compaction.process", () => {
       const part = yield* readCompactionPart(session.id)
       expect(part?.type).toBe("compaction")
       expect(part?.tail_start_id).toBe(keep.id)
-    }).pipe(withCompaction({ config: cfg({ tail_turns: 2, preserve_recent_tokens: 100 }) })),
+    }).pipe(withCompaction({ config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 100 }) })),
   )
 
   itCompaction.instance(
@@ -1010,7 +1010,7 @@ describe("session.compaction.process", () => {
         expect(part?.type).toBe("compaction")
         expect(part?.tail_start_id).toBeUndefined()
         expect(captured).toContain("yyyy")
-      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 1, preserve_recent_tokens: 20 }) }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 1, preserve_recent_tokens: 20 }) }))
     },
     { git: true },
   )
@@ -1047,7 +1047,7 @@ describe("session.compaction.process", () => {
         expect(part?.tail_start_id).toBeUndefined()
         expect(captured).toContain("recent image turn")
         expect(captured).toContain("Attached image/png: big.png")
-      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 1, preserve_recent_tokens: 100 }) }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 1, preserve_recent_tokens: 100 }) }))
     },
     { git: true },
   )
@@ -1098,7 +1098,7 @@ describe("session.compaction.process", () => {
         expect(filtered[1]?.info.role).toBe("assistant")
         expect(filtered[1]?.info.role === "assistant" ? filtered[1].info.summary : false).toBe(true)
         expect(filtered.map((msg) => msg.info.id)).not.toContain(large.id)
-      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 1, preserve_recent_tokens: 100 }) }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 1, preserve_recent_tokens: 100 }) }))
     },
     { git: true },
   )
@@ -1259,7 +1259,7 @@ describe("session.compaction.process", () => {
           expect(Cause.hasInterrupts(exit.cause)).toBe(true)
           expect(Date.now() - start).toBeLessThan(250)
         }
-      }).pipe(withCompaction({ llm: stub.layer }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2 }) }))
     },
     { git: true },
   )
@@ -1331,7 +1331,7 @@ describe("session.compaction.process", () => {
         expect(summary?.parts.some((part) => part.type === "reasoning")).toBe(false)
         // Sanity: the text part still got through.
         expect(summary?.parts.some((part) => part.type === "text" && part.text === "summary")).toBe(true)
-      }).pipe(withCompaction({ llm: stub.layer }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2 }) }))
     },
     { git: true },
   )
@@ -1367,7 +1367,7 @@ describe("session.compaction.process", () => {
 
         expect(summary?.info.role).toBe("assistant")
         expect(summary?.parts.some((part) => part.type === "tool")).toBe(false)
-      }).pipe(withCompaction({ llm: stub.layer }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2 }) }))
     },
     { git: true },
   )
@@ -1404,7 +1404,7 @@ describe("session.compaction.process", () => {
         expect(captured).not.toContain("keep this turn")
         expect(captured).not.toContain("and this one too")
         expect(captured).not.toContain("What did we do so far?")
-      }).pipe(withCompaction({ llm: stub.layer }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
     },
     { git: true },
   )
@@ -1446,7 +1446,7 @@ describe("session.compaction.process", () => {
         expect(captured.match(/summary one/g)?.length).toBe(1)
         expect(captured).toContain("## Constraints & Preferences")
         expect(captured).toContain("## Progress")
-      }).pipe(withCompaction({ llm: stub.layer }))
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
     },
     { git: true },
   )
@@ -1488,7 +1488,7 @@ describe("session.compaction.process", () => {
       expect(
         filtered.some((msg) => msg.info.role === "user" && msg.parts.some((part) => part.type === "compaction")),
       ).toBe(true)
-    }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
+    }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
   })
 
   itCompaction.instance(
@@ -1532,7 +1532,116 @@ describe("session.compaction.process", () => {
       const part = yield* readCompactionPart(session.id)
       expect(part?.type).toBe("compaction")
       expect(part?.tail_start_id).toBe(keep.id)
-    }).pipe(withCompaction({ config: cfg({ tail_turns: 2, preserve_recent_tokens: 500 }) })),
+    }).pipe(withCompaction({ config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 500 }) })),
+  )
+
+  itCompaction.instance(
+    "head_turns=2 stores head_end_id on compactionPart",
+    Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      yield* createUserMessage(session.id, "requirements")
+      yield* createUserMessage(session.id, "constraints")
+      yield* createUserMessage(session.id, "iter 1")
+      yield* createUserMessage(session.id, "iter 2")
+      yield* createUserMessage(session.id, "iter 3")
+      yield* createCompactionMarker(session.id)
+
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+      const parent = msgs.at(-1)?.info.id
+      expect(parent).toBeTruthy()
+      yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+      const part = yield* readCompactionPart(session.id)
+      expect(part?.type).toBe("compaction")
+      expect(part?.head_end_id).toBeTruthy()
+    }).pipe(withCompaction({ config: cfg({ head_turns: 2, tail_turns: 0, preserve_recent_tokens: 10_000 }) })),
+  )
+
+  itCompaction.instance(
+    "head_turns=0 tail_turns=2 backward compatible: still preserves tail",
+    () => {
+      const stub = llm()
+      let captured = ""
+      stub.push(
+        reply("summary", (input) => {
+          captured = JSON.stringify(input.messages)
+        }),
+      )
+
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        yield* createUserMessage(session.id, "older context")
+        yield* createUserMessage(session.id, "keep this turn")
+        yield* createUserMessage(session.id, "and this one too")
+        yield* createCompactionMarker(session.id)
+
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+        expect(captured).toContain("older context")
+        expect(captured).not.toContain("keep this turn")
+        expect(captured).not.toContain("and this one too")
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 0, tail_turns: 2, preserve_recent_tokens: 10_000 }) }))
+    },
+  )
+
+  itCompaction.instance(
+    "dual: head_turns=2 tail_turns=1 only compacts middle, preserves both ends",
+    () => {
+      const stub = llm()
+      let captured = ""
+      stub.push(
+        reply("dual summary", (input) => {
+          captured = JSON.stringify(input.messages)
+        }),
+      )
+
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        yield* createUserMessage(session.id, "HEAD REQUIREMENTS")
+        yield* createUserMessage(session.id, "HEAD CONSTRAINTS")
+        yield* createUserMessage(session.id, "middle noise 1")
+        yield* createUserMessage(session.id, "middle noise 2")
+        yield* createUserMessage(session.id, "TAIL RECENT")
+        yield* createCompactionMarker(session.id)
+
+        const msgs = yield* ssn.messages({ sessionID: session.id })
+        const parent = msgs.at(-1)?.info.id
+        expect(parent).toBeTruthy()
+        yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+        expect(captured).toContain("middle noise")
+        expect(captured).not.toContain("HEAD REQUIREMENTS")
+        expect(captured).not.toContain("HEAD CONSTRAINTS")
+        expect(captured).not.toContain("TAIL RECENT")
+      }).pipe(withCompaction({ llm: stub.layer, config: cfg({ head_turns: 2, tail_turns: 1, preserve_recent_tokens: 10_000 }) }))
+    },
+  )
+
+  itCompaction.instance(
+    "head_turns=3 tail_turns=0 on 3 turns: overlap, nothing to compact",
+    Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      yield* createUserMessage(session.id, "t1")
+      yield* createUserMessage(session.id, "t2")
+      yield* createUserMessage(session.id, "t3")
+      yield* createCompactionMarker(session.id)
+
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+      const parent = msgs.at(-1)?.info.id
+      expect(parent).toBeTruthy()
+      yield* SessionCompaction.use.process({ parentID: parent!, messages: msgs, sessionID: session.id, auto: false })
+
+      const part = yield* readCompactionPart(session.id)
+      expect(part?.head_end_id).toBeFalsy()
+      expect(part?.tail_start_id).toBeFalsy()
+    }).pipe(withCompaction({ config: cfg({ head_turns: 3, tail_turns: 0, preserve_recent_tokens: 10_000 }) })),
   )
 })
 

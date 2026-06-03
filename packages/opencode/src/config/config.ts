@@ -278,9 +278,13 @@ export const Info = Schema.Struct({
       prune: Schema.optional(Schema.Boolean).annotate({
         description: "Enable pruning of old tool outputs (default: true)",
       }),
+      head_turns: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Number of earliest user turns, including their following assistant/tool responses, to keep verbatim during compaction (default: 2)",
+      }),
       tail_turns: Schema.optional(NonNegativeInt).annotate({
         description:
-          "Number of recent user turns, including their following assistant/tool responses, to keep verbatim during compaction (default: 2)",
+          "Number of recent user turns, including their following assistant/tool responses, to keep verbatim during compaction (default: 0)",
       }),
       preserve_recent_tokens: Schema.optional(NonNegativeInt).annotate({
         description: "Maximum number of tokens from recent turns to preserve verbatim after compaction",

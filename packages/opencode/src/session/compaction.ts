@@ -37,7 +37,8 @@ export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
-const DEFAULT_TAIL_TURNS = 2
+const DEFAULT_HEAD_TURNS = 2
+const DEFAULT_TAIL_TURNS = 0
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 8_000
 const SUMMARY_TEMPLATE = `Output exactly the Markdown structure shown inside <template> and keep the section order unchanged. Do not include the <template> tags in your response.
@@ -247,49 +248,62 @@ export const layer = Layer.effect(
       cfg: Config.Info
       model: Provider.Model
     }) {
-      const limit = input.cfg.compaction?.tail_turns ?? DEFAULT_TAIL_TURNS
-      if (limit <= 0) return { head: input.messages, tail_start_id: undefined }
+      const headTurns = input.cfg.compaction?.head_turns ?? DEFAULT_HEAD_TURNS
+      const tailTurns = input.cfg.compaction?.tail_turns ?? DEFAULT_TAIL_TURNS
+      if (headTurns <= 0 && tailTurns <= 0) return { head: input.messages, tail_start_id: undefined }
       const budget = preserveRecentBudget({ cfg: input.cfg, model: input.model })
       const all = turns(input.messages)
       if (!all.length) return { head: input.messages, tail_start_id: undefined }
-      const recent = all.slice(-limit)
-      const sizes = yield* Effect.forEach(
-        recent,
-        (turn) =>
-          estimate({
+
+      let headEnd = 0
+      if (headTurns > 0) {
+        const earliest = all.slice(0, headTurns)
+        for (const turn of earliest) {
+          const size = yield* estimate({
             messages: input.messages.slice(turn.start, turn.end),
             model: input.model,
-          }),
-        { concurrency: 1 },
-      )
-
-      let total = 0
-      let keep: Tail | undefined
-      for (let i = recent.length - 1; i >= 0; i--) {
-        const turn = recent[i]!
-        const size = sizes[i]
-        if (total + size <= budget) {
-          total += size
-          keep = { start: turn.start, id: turn.id }
-          continue
+          })
+          if (size <= budget) {
+            headEnd = turn.end
+            continue
+          }
+          break
         }
-        const remaining = budget - total
-        const split = yield* splitTurn({
-          messages: input.messages,
-          turn,
-          model: input.model,
-          budget: remaining,
-          estimate,
-        })
-        if (split) keep = split
-        else if (!keep) log.info("tail fallback", { budget, size, total })
-        break
       }
 
-      if (!keep || keep.start === 0) return { head: input.messages, tail_start_id: undefined }
+      let tailStart = input.messages.length
+      let keep: Tail | undefined
+      if (tailTurns > 0) {
+        const latest = all.slice(-tailTurns)
+        const sizes = yield* Effect.forEach(
+          latest,
+          (turn) =>
+            estimate({
+              messages: input.messages.slice(turn.start, turn.end),
+              model: input.model,
+            }),
+          { concurrency: 1 },
+        )
+
+        let total = 0
+        for (let i = latest.length - 1; i >= 0; i--) {
+          const turn = latest[i]!
+          const size = sizes[i]
+          if (total + size <= budget) {
+            total += size
+            keep = { start: turn.start, id: turn.id }
+            continue
+          }
+          break
+        }
+        if (keep) tailStart = keep.start
+      }
+
+      if (headEnd >= tailStart) return { head: input.messages, tail_start_id: undefined, head_end_id: undefined }
       return {
-        head: input.messages.slice(0, keep.start),
-        tail_start_id: keep.id,
+        head: input.messages.slice(headEnd, tailStart),
+        tail_start_id: tailStart < input.messages.length ? input.messages[tailStart]?.info.id : undefined,
+        head_end_id: headEnd > 0 ? input.messages[headEnd - 1]?.info.id : undefined,
       }
     })
 
@@ -469,11 +483,17 @@ export const layer = Layer.effect(
         return "stop"
       }
 
-      if (compactionPart && selected.tail_start_id && compactionPart.tail_start_id !== selected.tail_start_id) {
-        yield* session.updatePart({
-          ...compactionPart,
-          tail_start_id: selected.tail_start_id,
-        })
+      if (compactionPart) {
+        const needsUpdate =
+          (selected.tail_start_id && compactionPart.tail_start_id !== selected.tail_start_id) ||
+          (selected.head_end_id && compactionPart.head_end_id !== selected.head_end_id)
+        if (needsUpdate) {
+          yield* session.updatePart({
+            ...compactionPart,
+            tail_start_id: selected.tail_start_id ?? compactionPart.tail_start_id,
+            head_end_id: selected.head_end_id ?? compactionPart.head_end_id,
+          })
+        }
       }
 
       if (result === "continue" && input.auto) {
