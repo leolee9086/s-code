@@ -3,21 +3,21 @@ description: "find issue(s) on github"
 model: opencode/claude-haiku-4-5
 ---
 
-Search through existing issues in anomalyco/opencode using the gh cli to find issues matching this query:
+使用 gh CLI 在 anomalyco/opencode 中搜索已有 issue，查找与此查询匹配的 issue：
 
-$ARGUMENTS
 
-Consider:
 
-1. Similar titles or descriptions
-2. Same error messages or symptoms
-3. Related functionality or components
-4. Similar feature requests
+考虑：
 
-Please list any matching issues with:
+1. 相似标题或描述
+2. 相同的错误消息或症状
+3. 相关功能或组件
+4. 相似的功能请求
 
-- Issue number and title
-- Brief explanation of why it matches the query
-- Link to the issue
+列出所有匹配的 issue，包含：
 
-If no clear matches are found, say so.
+- Issue 编号和标题
+- 简要说明为什么匹配该查询
+- Issue 链接
+
+如果未找到明确匹配，请说明。

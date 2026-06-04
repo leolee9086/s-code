@@ -1,24 +1,24 @@
 ---
-description: "Bump AI sdk dependencies minor / patch versions only"
+description: "仅升级 AI SDK 依赖的次要/补丁版本"
 ---
 
-Please read @package.json and @packages/opencode/package.json.
+请阅读 @package.json 和 @packages/opencode/package.json。
 
-Your job is to look into AI SDK dependencies, figure out if they have versions that can be upgraded (minor or patch versions ONLY no major ignore major changes).
+你的任务是检查 AI SDK 依赖，找出哪些有可以升级的版本（仅次要或补丁版本，不要主版本变更）。
 
-I want a report of every dependency and the version that can be upgraded to.
-What would be even better is if you can give me brief summary of the changes for each dep and a link to the changelog for each dependency, or at least some reference info so I can see what bugs were fixed or new features were added.
+我需要一份报告，列出每个依赖及其可以升级到的版本。
+最好能给我每个依赖变更的简要总结和 changelog 链接，或者至少一些参考信息，让我可以看到修复了哪些 bug 或添加了哪些新功能。
 
-Consider using subagents for each dep to save your context window.
+考虑为每个依赖使用 subagent 以节省你的上下文窗口。
 
-Here is a short list of some deps (please be comprehensive tho):
+以下是一些依赖的简短列表（请尽量全面）：
 
 - "ai"
 - "@ai-sdk/openai"
 - "@ai-sdk/anthropic"
 - "@openrouter/ai-sdk-provider"
-- etc, etc
+- 等等
 
-DO NOT upgrade the dependencies yet, just make a list of all dependencies and their versions that can be upgraded to minor or patch versions only.
+暂不要升级依赖，只需列出所有依赖及其可升级到的版本（仅次要或补丁版本）。
 
-Write up your findings to ai-sdk-updates.md
+将你的发现写入 ai-sdk-updates.md

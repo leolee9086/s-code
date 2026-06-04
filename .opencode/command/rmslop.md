@@ -1,15 +1,15 @@
 ---
-description: Remove AI code slop
+description: 删除 AI 生成的代码垃圾
 ---
 
-Check the diff against dev, and remove all AI generated slop introduced in this branch.
+检查与 dev 分支的 diff，删除此分支中所有 AI 生成的代码垃圾。
 
-This includes:
+包括：
 
-- Extra comments that a human wouldn't add or is inconsistent with the rest of the file
-- Extra defensive checks or try/catch blocks that are abnormal for that area of the codebase (especially if called by trusted / validated codepaths)
-- Casts to any to get around type issues
-- Any other style that is inconsistent with the file
-- Unnecessary emoji usage
+- 人类不会添加的额外注释，或与文件其余部分不一致的注释
+- 该代码区域中不常见的额外防御性检查或 try/catch 块（特别是由可信/已验证调用路径调用时）
+- 为绕过类型问题而做的 any 类型转换
+- 任何与文件风格不一致的其他写法
+- 不必要的 emoji 使用
 
-Report at the end with only a 1-3 sentence summary of what you changed
+最后报告时，仅用 1-3 句话摘要说明你改了哪些内容

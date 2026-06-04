@@ -1,5 +1,5 @@
 ---
-description: spellcheck all markdown file changes
+description: 对所有 markdown 文件修改进行拼写检查
 ---
 
-Look at all the unstaged changes to markdown (.md, .mdx) files, pull out the lines that have changed, and check for spelling and grammar errors.
+查看所有未暂存的 markdown（.md, .mdx）文件修改，提取变更的行，检查拼写和语法错误。

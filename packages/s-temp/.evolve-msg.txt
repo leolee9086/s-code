@@ -1,1 +1,0 @@
-完成 Injection Service + 文件协议 + prompt.ts 注入 + scope 控制。evolve 插件工具已验证可用。下一轮：扩展外部编程接口——注入支持 tool_call/tool_result、HTTP API 注入端点、EventBus 广播、跨 session 注入。

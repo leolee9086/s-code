@@ -1,14 +1,14 @@
 ---
-description: translate English to other languages
+description: 将英文翻译成其他语言
 model: opencode/claude-opus-4-7
 ---
 
-run git diff and translate changed english doc and UI copy files to other international languages. Translate all languages in parallel to save time.
+运行 git diff，将修改的英文文档和 UI 文案文件翻译成其他国际语言。并行翻译所有语言以节省时间。
 
-Requirements:
+要求：
 
-- Preserve meaning, intent, tone, and formatting (including Markdown/MDX structure).
-- Preserve all technical terms and artifacts exactly: product/company names, API names, identifiers, code, commands/flags, file paths, URLs, versions, error messages, config keys/values, and anything inside inline code or code blocks.
-- Also preserve every term listed in the Do-Not-Translate glossary below.
-- Also apply locale-specific guidance from `.opencode/glossary/<locale>.md` when available (for example, `zh-cn.md`).
-- Do not modify fenced code blocks.
+- 保留含义、意图、语气和格式（包括 Markdown/MDX 结构）。
+- 精确保留所有技术术语和产物：产品/公司名称、API 名称、标识符、代码、命令/flag、文件路径、URL、版本、错误消息、配置键/值，以及内联代码或代码块内的任何内容。
+- 同时保留下方"不翻译词汇表"中列出的每个术语。
+- 如果可用，应用 `.opencode/glossary/<locale>.md` 中的本地化指导（例如 `zh-cn.md`）。
+- 不要修改围栏代码块。

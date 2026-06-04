@@ -4,9 +4,9 @@ model: opencode/kimi-k2.5
 subtask: true
 ---
 
-commit and push
+提交并推送
 
-make sure it includes a prefix like
+确保包含前缀，如：
 docs:
 tui:
 core:
@@ -14,15 +14,13 @@ ci:
 ignore:
 wip:
 
-For anything in the packages/web use the docs: prefix.
+对于 packages/web 中的内容使用 docs: 前缀。
 
-prefer to explain WHY something was done from an end user perspective instead of
-WHAT was done.
+优先从最终用户视角解释为什么做某事，而不是做了什么。
 
-do not do generic messages like "improved agent experience" be very specific
-about what user facing changes were made
+不要做 "improved agent experience" 这样的通用消息，要具体说明做了哪些面向用户的改动。
 
-if there are conflicts DO NOT FIX THEM. notify me and I will fix them
+如果存在冲突，不要解决它们。通知我，我来处理。
 
 ## GIT DIFF
 

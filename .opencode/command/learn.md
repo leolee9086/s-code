@@ -1,42 +1,42 @@
 ---
-description: Extract non-obvious learnings from session to AGENTS.md files to build codebase understanding
+description: 从会话中提取非显而易见的经验，写入 AGENTS.md 文件以积累代码库理解
 ---
 
-Analyze this session and extract non-obvious learnings to add to AGENTS.md files.
+分析此会话，提取非显而易见的经验并添加到 AGENTS.md 文件中。
 
-AGENTS.md files can exist at any directory level, not just the project root. When an agent reads a file, any AGENTS.md in parent directories are automatically loaded into the context of the tool read. Place learnings as close to the relevant code as possible:
+AGENTS.md 文件可以存在于任何目录层级，不仅限于项目根目录。当 agent 读取文件时，所有父目录中的 AGENTS.md 会自动加载到 tool read 的上下文中。将经验放在尽可能靠近相关代码的位置：
 
-- Project-wide learnings → root AGENTS.md
-- Package/module-specific → packages/foo/AGENTS.md
-- Feature-specific → src/auth/AGENTS.md
+- 项目级经验 → 根 AGENTS.md
+- 包/模块级 → packages/foo/AGENTS.md
+- 功能级 → src/auth/AGENTS.md
 
-What counts as a learning (non-obvious discoveries only):
+什么是经验（仅限非显而易见的发现）：
 
-- Hidden relationships between files or modules
-- Execution paths that differ from how code appears
-- Non-obvious configuration, env vars, or flags
-- Debugging breakthroughs when error messages were misleading
-- API/tool quirks and workarounds
-- Build/test commands not in README
-- Architectural decisions and constraints
-- Files that must change together
+- 文件或模块之间的隐藏关系
+- 与代码表象不一致的执行路径
+- 非显而易见的配置、环境变量或 flag
+- 错误消息具有误导性时的调试突破
+- API/工具的奇怪行为和解决方法
+- README 中没有的构建/测试命令
+- 架构决策和约束
+- 必须同时修改的文件
 
-What NOT to include:
+不要包含的内容：
 
-- Obvious facts from documentation
-- Standard language/framework behavior
-- Things already in an AGENTS.md
-- Verbose explanations
-- Session-specific details
+- 文档中显而易见的常识
+- 标准语言/框架行为
+- AGENTS.md 中已有的内容
+- 冗长的解释
+- 会话特有的细节
 
-Process:
+流程：
 
-1. Review session for discoveries, errors that took multiple attempts, unexpected connections
-2. Determine scope - what directory does each learning apply to?
-3. Read existing AGENTS.md files at relevant levels
-4. Create or update AGENTS.md at the appropriate level
-5. Keep entries to 1-3 lines per insight
+1. 回顾会话中的发现、多次尝试才解决的错误、意外的连接
+2. 确定范围 — 每条经验适用于哪个目录？
+3. 读取相关层级的现有 AGENTS.md 文件
+4. 在适当的层级创建或更新 AGENTS.md
+5. 每条洞察保持 1-3 行
 
-After updating, summarize which AGENTS.md files were created/updated and how many learnings per file.
+更新后，总结创建/更新了哪些 AGENTS.md 文件以及每个文件中有多少条经验。
 
 $ARGUMENTS
