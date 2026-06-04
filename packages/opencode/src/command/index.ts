@@ -93,6 +93,13 @@ export const layer = Layer.effect(
         subtask: true,
         hints: hints(PROMPT_REVIEW),
       }
+      commands["stop-evolve"] = {
+        name: "stop-evolve",
+        description: "stop evolution mode and return to normal interaction",
+        source: "command",
+        template: "/stop-evolve",
+        hints: [],
+      }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
         commands[name] = {
