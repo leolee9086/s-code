@@ -30,7 +30,7 @@ import { Command } from "../command"
 import { pathToFileURL, fileURLToPath } from "url"
 import { Config } from "@/config/config"
 import { ConfigMarkdown } from "@/config/markdown"
-import { Directive } from "@/content-filter/directive"
+import { PrefixCommand } from "@/prefix-command"
 import { PhraseBan } from "@/content-filter/phrase-ban"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/core/util/error"
@@ -126,6 +126,7 @@ export const layer = Layer.effect(
     const scope = yield* Scope.Scope
     const instruction = yield* Instruction.Service
     const injection = yield* Injection.Service
+    PrefixCommand.ensureBuiltins()
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
@@ -1072,38 +1073,39 @@ export const layer = Layer.effect(
         return [{ ...part, messageID: info.id, sessionID: input.sessionID }]
       })
 
-      type ActiveDirective = Exclude<Directive.Info, { type: "none" }>
-      const directiveParts: Array<{ directive: ActiveDirective; remaining: string; index: number }> = []
+      type MatchedPrefix = { match: PrefixCommand.MatchResult; index: number }
+      const matchedPrefixes: MatchedPrefix[] = []
       for (const [i, part] of input.parts.entries()) {
         if (part.type !== "text") continue
-        const { directive, remaining } = Directive.parse(part.text)
-        if (directive.type === "none") continue
-        directiveParts.push({ directive, remaining, index: i })
+        const match = PrefixCommand.match(part.text)
+        if (!match) continue
+        matchedPrefixes.push({ match, index: i })
       }
-      for (const { directive } of directiveParts) {
-        if (directive.type === "ban") {
-          yield* PhraseBan.ban(input.sessionID, directive.phrase)
-          log.info("phrase banned", { sessionID: input.sessionID, phrase: directive.phrase })
+      for (const { match } of matchedPrefixes) {
+        const { info, args } = match
+        if (info.builtin === "ban") {
+          yield* PhraseBan.ban(input.sessionID, args)
+          log.info("phrase banned", { sessionID: input.sessionID, phrase: args })
         }
-        if (directive.type === "unban") {
-          yield* PhraseBan.unban(input.sessionID, directive.phrase)
-          log.info("phrase unbanned", { sessionID: input.sessionID, phrase: directive.phrase })
+        if (info.builtin === "unban") {
+          yield* PhraseBan.unban(input.sessionID, args)
+          log.info("phrase unbanned", { sessionID: input.sessionID, phrase: args })
+        }
+        if (info.builtin === "stop-evolve") {
+          delete process.env["S_CODE_EVOLVE"]
+          log.info("evolve mode stopped by prefix command", { sessionID: input.sessionID })
         }
       }
 
       const partsToResolve = input.parts.map((part, i) => {
-        const dp = directiveParts.find((d) => d.index === i)
-        if (dp && part.type === "text" && !dp.remaining.trim()) {
-          return {
-            ...part,
-            text: `[指令已执行: ${dp.directive.type === "ban" ? "禁止" : "允许"} "${dp.directive.phrase}"]`,
-            synthetic: true,
-          }
+        const mp = matchedPrefixes.find((d) => d.index === i)
+        if (!mp || part.type !== "text") return part
+        const { info } = mp.match
+        const label = info.builtin === "ban" ? "禁止" : info.builtin === "unban" ? "允许" : "进化"
+        if (!mp.match.args.trim()) {
+          return { ...part, text: `[指令已执行: ${label}]`, synthetic: true }
         }
-        if (dp && part.type === "text") {
-          return { ...part, text: dp.remaining }
-        }
-        return part
+        return { ...part, text: mp.match.args.trim(), synthetic: true }
       })
 
       const resolvedParts = yield* Effect.forEach(partsToResolve, resolvePart, { concurrency: "unbounded" }).pipe(
@@ -1537,7 +1539,7 @@ export const layer = Layer.effect(
               }
             }
 
-            if (result === "stop" && isEvolveMode()) {
+            if (result === "stop" && isEvolveMode() && !session.parentID) {
               // 进化模式：仅当最后一条 user message 是系统合成时才强制继续
               const lastUserMsg = msgs.findLast(
                 (m) => m.info.role === "user" && m.info.id === lastUser.id,
@@ -1557,7 +1559,16 @@ export const layer = Layer.effect(
                   messageID: continueMsg.id,
                   sessionID,
                   type: "text",
-                text: "你在进化模式下，不能直接回复。必须调用 evolve({ message: '本轮总结和下轮目标' }) 来结束本轮进化。请分析进展并使用工具，准备就绪后调用 evolve。",
+                text: `<system>你当前处于进化模式，
+                这个模式的作用是在不需要用户输入的情况下,不断改进你自身的代码实现,以更好地完成任务。
+                如果你认为存在用户给出的明确指令或者任务,应该先完成它们。
+                否则你应该分析当前你自身的代码状态和历史session中的信息，总结自己需要哪些新的特性或者改进。
+                例如：更多的工具调用能力，更好的错误处理和恢复能力等一切你能够想到能为用户提供帮助的能力。
+                找到方向之后，你会编写详细的实现计划，然后以最佳实践开始实现它们。
+                在进化模式下你不能直接回复文字，因为这是一个默认人不在回路的无限循环，你能做的只有改进你自己的代码以及进入下一轮进化。
+                必须调用 evolve({ message: '本轮总结和下轮目标' }) 来让你的修改进入二进制并结束本轮进化。
+                请分析进展并使用工具，完成你对自身的改进之后，调用 evolve工具。
+                </system>`,
                 synthetic: true,
               } satisfies SessionLegacy.TextPart)
               return "continue" as const
@@ -1638,30 +1649,37 @@ export const layer = Layer.effect(
         // runLoop 随后会加载到这条新消息并自然继续处理（即使 session 之前已完成），
         // 无需用户手动输入任何内容。
         if (isEvolveMode()) {
-          const evolveMsg = readEvolveMessage()
-          if (evolveMsg) {
-            const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
-              Effect.provideService(Database.Service, database),
-            )
-            const { user: lastUser } = MessageV2.latest(msgs)
-            if (lastUser) {
-              const evolveUserMsg: SessionLegacy.User = {
-                id: MessageID.ascending(),
-                sessionID: input.sessionID,
-                role: "user",
-                time: { created: Date.now() },
-                agent: lastUser.agent,
-                model: lastUser.model,
+          const evolveSession = yield* sessions.get(input.sessionID).pipe(
+            Effect.option,
+          )
+          if (Option.isSome(evolveSession) && evolveSession.value.parentID) {
+            // 子任务 session 跳过进化模式续进消息注入
+          } else {
+            const evolveMsg = readEvolveMessage()
+            if (evolveMsg) {
+              const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
+                Effect.provideService(Database.Service, database),
+              )
+              const { user: lastUser } = MessageV2.latest(msgs)
+              if (lastUser) {
+                const evolveUserMsg: SessionLegacy.User = {
+                  id: MessageID.ascending(),
+                  sessionID: input.sessionID,
+                  role: "user",
+                  time: { created: Date.now() },
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                }
+                yield* sessions.updateMessage(evolveUserMsg)
+                yield* sessions.updatePart({
+                  id: PartID.ascending(),
+                  messageID: evolveUserMsg.id,
+                  sessionID: input.sessionID,
+                  type: "text",
+                  text: evolveMsg,
+                  synthetic: true,
+                } satisfies SessionLegacy.TextPart)
               }
-              yield* sessions.updateMessage(evolveUserMsg)
-              yield* sessions.updatePart({
-                id: PartID.ascending(),
-                messageID: evolveUserMsg.id,
-                sessionID: input.sessionID,
-                type: "text",
-                text: evolveMsg,
-                synthetic: true,
-              } satisfies SessionLegacy.TextPart)
             }
           }
         }

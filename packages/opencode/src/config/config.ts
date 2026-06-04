@@ -32,6 +32,7 @@ import { ConfigLayout } from "./layout"
 import { ConfigLSP } from "./lsp"
 import { ConfigManaged } from "./managed"
 import { ConfigMCP } from "./mcp"
+import { ConfigPrefix } from "./prefix"
 import { ConfigModelID } from "./model-id"
 import { ConfigParse } from "./parse"
 import { ConfigPaths } from "./paths"
@@ -146,6 +147,9 @@ export const Info = Schema.Struct({
   }),
   command: Schema.optional(Schema.Record(Schema.String, ConfigCommand.Info)).annotate({
     description: "Command configuration, see https://opencode.ai/docs/commands",
+  }),
+  prefix: Schema.optional(Schema.Record(Schema.String, ConfigPrefix.Info)).annotate({
+    description: "Natural-language prefix commands (e.g. \"进化:\" triggers stop-evolve)",
   }),
   skills: Schema.optional(ConfigSkills.Info).annotate({ description: "Additional skill folder paths" }),
   reference: Schema.optional(ConfigReference.Info).annotate({
