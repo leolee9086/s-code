@@ -3,6 +3,7 @@ import { Command } from "@/command"
 import { Format } from "@/format"
 import { LSP } from "@/lsp/lsp"
 import { Vcs } from "@/project/vcs"
+import { PrefixCommand } from "@/prefix-command"
 import { Skill } from "@/skill"
 import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
@@ -53,6 +54,7 @@ export const InstancePaths = {
   skill: "/skill",
   lsp: "/lsp",
   formatter: "/formatter",
+  prefix: "/prefix",
 } as const
 
 export const InstanceApi = HttpApi.make("instance")
@@ -184,6 +186,16 @@ export const InstanceApi = HttpApi.make("instance")
             identifier: "formatter.status",
             summary: "Get formatter status",
             description: "Get formatter status",
+          }),
+        ),
+        HttpApiEndpoint.get("prefix", InstancePaths.prefix, {
+          query: WorkspaceRoutingQuery,
+          success: described(Schema.Array(PrefixCommand.InfoSchema), "List of directive prefix entries"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "prefix.list",
+            summary: "List directive prefixes",
+            description: "Get all registered directive prefix entries with colors.",
           }),
         ),
       )

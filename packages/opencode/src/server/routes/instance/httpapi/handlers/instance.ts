@@ -4,6 +4,7 @@ import * as InstanceState from "@/effect/instance-state"
 import { Format } from "@/format"
 import { Global } from "@opencode-ai/core/global"
 import { LSP } from "@/lsp/lsp"
+import { PrefixCommand } from "@/prefix-command"
 import { Vcs } from "@/project/vcs"
 import { Skill } from "@/skill"
 import { Effect } from "effect"
@@ -18,6 +19,7 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
     const command = yield* Command.Service
     const format = yield* Format.Service
     const lsp = yield* LSP.Service
+    const prefixCmd = yield* PrefixCommand.Service
     const skill = yield* Skill.Service
     const vcs = yield* Vcs.Service
 
@@ -93,6 +95,10 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
       return yield* format.status()
     })
 
+    const getPrefix = Effect.fn("InstanceHttpApi.prefix")(function* () {
+      return yield* prefixCmd.list()
+    })
+
     return handlers
       .handle("dispose", dispose)
       .handle("path", getPath)
@@ -106,5 +112,6 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
       .handle("skill", getSkill)
       .handle("lsp", getLsp)
       .handle("formatter", getFormatter)
+      .handle("prefix", getPrefix)
   }),
 )

@@ -12,6 +12,7 @@ import { NamedError } from "@opencode-ai/core/util/error"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
 import { Command } from "../../src/command"
+import { PrefixCommand } from "../../src/prefix-command"
 import { Config } from "@/config/config"
 import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
@@ -174,6 +175,7 @@ function makePrompt(input?: { processor?: "blocking" }) {
     Env.defaultLayer,
     AgentSvc.defaultLayer,
     Command.defaultLayer,
+    PrefixCommand.defaultLayer,
     Permission.defaultLayer,
     Plugin.defaultLayer,
     Config.defaultLayer,

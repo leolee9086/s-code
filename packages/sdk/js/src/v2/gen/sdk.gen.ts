@@ -80,6 +80,14 @@ import type {
   GlobalHealthResponses,
   GlobalUpgradeErrors,
   GlobalUpgradeResponses,
+  InjectionClearErrors,
+  InjectionClearResponses,
+  InjectionPrefixPayload,
+  InjectionSetPrefixErrors,
+  InjectionSetPrefixResponses,
+  InjectionSetSuffixErrors,
+  InjectionSetSuffixResponses,
+  InjectionSuffixPayload,
   InstanceDisposeErrors,
   InstanceDisposeResponses,
   LspStatusErrors,
@@ -118,6 +126,8 @@ import type {
   PermissionRespondResponses,
   PermissionRuleset,
   PermissionV2Reply,
+  PrefixListErrors,
+  PrefixListResponses,
   ProjectCurrentErrors,
   ProjectCurrentResponses,
   ProjectInitGitErrors,
@@ -1641,6 +1651,82 @@ export class File extends HeyApiClient {
   }
 }
 
+export class Injection extends HeyApiClient {
+  public setPrefix<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      injectionPrefixPayload?: InjectionPrefixPayload
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "injectionPrefixPayload", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<InjectionSetPrefixResponses, InjectionSetPrefixErrors, ThrowOnError>({
+      url: "/injection/prefix/{sessionID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public setSuffix<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      injectionSuffixPayload?: InjectionSuffixPayload
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { key: "injectionSuffixPayload", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<InjectionSetSuffixResponses, InjectionSetSuffixErrors, ThrowOnError>({
+      url: "/injection/suffix/{sessionID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  public clear<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).delete<InjectionClearResponses, InjectionClearErrors, ThrowOnError>({
+      url: "/injection/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Instance extends HeyApiClient {
   /**
    * Dispose instance
@@ -1965,6 +2051,38 @@ export class Formatter extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<FormatterStatusResponses, FormatterStatusErrors, ThrowOnError>({
       url: "/formatter",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Prefix extends HeyApiClient {
+  /**
+   * List directive prefixes
+   *
+   * Get all registered directive prefix entries with colors.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<PrefixListResponses, PrefixListErrors, ThrowOnError>({
+      url: "/prefix",
       ...options,
       ...params,
     })
@@ -5335,6 +5453,11 @@ export class OpencodeClient extends HeyApiClient {
     return (this._file ??= new File({ client: this.client }))
   }
 
+  private _injection?: Injection
+  get injection(): Injection {
+    return (this._injection ??= new Injection({ client: this.client }))
+  }
+
   private _instance?: Instance
   get instance(): Instance {
     return (this._instance ??= new Instance({ client: this.client }))
@@ -5363,6 +5486,11 @@ export class OpencodeClient extends HeyApiClient {
   private _formatter?: Formatter
   get formatter(): Formatter {
     return (this._formatter ??= new Formatter({ client: this.client }))
+  }
+
+  private _prefix?: Prefix
+  get prefix(): Prefix {
+    return (this._prefix ??= new Prefix({ client: this.client }))
   }
 
   private _mcp?: Mcp

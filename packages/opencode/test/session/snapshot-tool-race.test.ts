@@ -36,6 +36,7 @@ import { Agent as AgentSvc } from "../../src/agent/agent"
 import { BackgroundJob } from "@/background/job"
 import { Git } from "../../src/git"
 import { Command } from "../../src/command"
+import { PrefixCommand } from "../../src/prefix-command"
 import { Config } from "@/config/config"
 import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
@@ -122,6 +123,7 @@ function makeHttp() {
     Env.defaultLayer,
     AgentSvc.defaultLayer,
     Command.defaultLayer,
+    PrefixCommand.defaultLayer,
     Permission.defaultLayer,
     Plugin.defaultLayer,
     Config.defaultLayer,

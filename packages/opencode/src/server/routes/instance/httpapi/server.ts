@@ -47,6 +47,7 @@ import { ShareNext } from "@/share/share-next"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@opencode-ai/core/database/database"
 import { Skill } from "@/skill"
+import { PrefixCommand } from "@/prefix-command"
 import { Snapshot } from "@/snapshot"
 import { ToolRegistry } from "@/tool/registry"
 import { lazy } from "@/util/lazy"
@@ -210,6 +211,7 @@ export function createRoutes(
       ModelsDev.defaultLayer,
       Permission.defaultLayer,
       Plugin.defaultLayer,
+      PrefixCommand.defaultLayer,
       Project.defaultLayer,
       ProviderAuth.defaultLayer,
       Provider.defaultLayer,

@@ -64,6 +64,7 @@ import { type WorkspaceStatus } from "../workspace-label"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../context/tui-config"
 
+
 export type PromptProps = {
   sessionID?: string
   visible?: boolean
@@ -781,19 +782,35 @@ export function Prompt(props: PromptProps) {
     })
   }
 
+  const [directiveEntries, setDirectiveEntries] = createSignal<Array<{ prefixes: string[]; styleId?: string }>>([])
+
+  onMount(() => {
+    sdk.client.prefix
+      .list({ directory: project.instance.directory() ?? undefined })
+      .then((res) => {
+        const entries = (res.data ?? []) as Array<{ prefixes: string[]; styleId?: string }>
+        setDirectiveEntries(entries)
+      })
+      .catch(() => {})
+  })
+
   function highlightDirectivePrefix() {
     input.extmarks.getAllForTypeId(directiveTypeId).forEach((e) => input.extmarks.delete(e.id))
     const text = input.plainText
-    const prefixes = ["禁止:", "禁止：", "ban:", "禁语:", "允许:", "允许：", "unban:", "解禁:"]
-    const match = prefixes.find((p) => text.startsWith(p))
-    if (match) {
-      input.extmarks.create({
-        start: 0,
-        end: match.length,
-        virtual: false,
-        styleId: directiveStyleId,
-        typeId: directiveTypeId,
-      })
+    for (const entry of directiveEntries()) {
+      for (const prefix of entry.prefixes) {
+        if (text.startsWith(prefix)) {
+          const styleId = entry.styleId ? syntax().getStyleId(entry.styleId) : directiveStyleId
+          input.extmarks.create({
+            start: 0,
+            end: prefix.length,
+            virtual: false,
+            styleId: styleId ?? directiveStyleId,
+            typeId: directiveTypeId,
+          })
+          return
+        }
+      }
     }
   }
 

@@ -212,7 +212,7 @@ export type FooterOutput = {
 // transport both emit these to update footer state without reaching into
 // internal signals directly.
 export type FooterEvent =
-  | {
+    | {
       type: "catalog"
       agents: RunAgent[]
       resources: RunResource[]

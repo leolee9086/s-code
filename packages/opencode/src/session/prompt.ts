@@ -126,7 +126,6 @@ export const layer = Layer.effect(
     const scope = yield* Scope.Scope
     const instruction = yield* Instruction.Service
     const injection = yield* Injection.Service
-    PrefixCommand.ensureBuiltins()
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
@@ -134,6 +133,7 @@ export const layer = Layer.effect(
     const llm = yield* LLM.Service
     const references = yield* Reference.Service
     const events = yield* EventV2Bridge.Service
+    const prefixCmd = yield* PrefixCommand.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const { db } = database
@@ -1077,9 +1077,9 @@ export const layer = Layer.effect(
       const matchedPrefixes: MatchedPrefix[] = []
       for (const [i, part] of input.parts.entries()) {
         if (part.type !== "text") continue
-        const match = PrefixCommand.match(part.text)
-        if (!match) continue
-        matchedPrefixes.push({ match, index: i })
+        const m = yield* prefixCmd.match(part.text)
+        if (!m) continue
+        matchedPrefixes.push({ match: m, index: i })
       }
       for (const { match } of matchedPrefixes) {
         const { info, args } = match
@@ -1091,21 +1091,30 @@ export const layer = Layer.effect(
           yield* PhraseBan.unban(input.sessionID, args)
           log.info("phrase unbanned", { sessionID: input.sessionID, phrase: args })
         }
-        if (info.builtin === "stop-evolve") {
+        if (info.builtin === "enter-evolve") {
+          process.env["S_CODE_EVOLVE"] = "1"
+          if (args.trim()) writeEvolveMessage(args.trim())
+          log.info("evolve mode entered by prefix command", { sessionID: input.sessionID })
+        }
+        if (info.builtin === "exit-evolve") {
           delete process.env["S_CODE_EVOLVE"]
-          log.info("evolve mode stopped by prefix command", { sessionID: input.sessionID })
+          log.info("evolve mode exited by prefix command", { sessionID: input.sessionID })
         }
       }
 
       const partsToResolve = input.parts.map((part, i) => {
         const mp = matchedPrefixes.find((d) => d.index === i)
         if (!mp || part.type !== "text") return part
-        const { info } = mp.match
-        const label = info.builtin === "ban" ? "禁止" : info.builtin === "unban" ? "允许" : "进化"
-        if (!mp.match.args.trim()) {
-          return { ...part, text: `[指令已执行: ${label}]`, synthetic: true }
+        const { info, args } = mp.match
+        let feedback: string
+        switch (info.builtin) {
+          case "ban": feedback = `[指令已执行: 禁止 "${args}"]`; break
+          case "unban": feedback = `[指令已执行: 允许 "${args}"]`; break
+          case "enter-evolve": feedback = `[指令已执行: 进入进化模式]${args.trim() ? " " + args.trim() : ""}`; break
+          case "exit-evolve": feedback = `[指令已执行: 退出进化模式]`; break
+          default: feedback = `[指令已执行]`
         }
-        return { ...part, text: mp.match.args.trim(), synthetic: true }
+        return { ...part, text: feedback }
       })
 
       const resolvedParts = yield* Effect.forEach(partsToResolve, resolvePart, { concurrency: "unbounded" }).pipe(
@@ -1852,7 +1861,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(SessionSummary.defaultLayer),
     Layer.provide(Image.defaultLayer),
     Layer.provide(
-      Layer.mergeAll(
+        Layer.mergeAll(
         Agent.defaultLayer,
         Database.defaultLayer,
         SystemPrompt.defaultLayer,
@@ -1862,6 +1871,7 @@ export const defaultLayer = Layer.suspend(() =>
         RuntimeFlags.defaultLayer,
         EventV2Bridge.defaultLayer,
         Injection.defaultLayer,
+        PrefixCommand.defaultLayer,
       ),
     ),
   ),

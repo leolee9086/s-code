@@ -1799,6 +1799,13 @@ export type Config = {
       subtask?: boolean
     }
   }
+  prefix?: {
+    [key: string]: {
+      prefixes: Array<string>
+      description?: string
+      command: string
+    }
+  }
   skills?: {
     paths?: Array<string>
     urls?: Array<string>
@@ -2199,6 +2206,28 @@ export type File = {
   status: "added" | "deleted" | "modified"
 }
 
+export type InjectionPart = {
+  type: "text"
+  text: string
+  synthetic?: boolean
+}
+
+export type InjectionPrefixPayload = {
+  parts: Array<InjectionPart>
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
+}
+
+export type InjectionSuffixPayload = {
+  parts: Array<InjectionPart>
+  once?: boolean
+}
+
 export type Path = {
   home: string
   state: string
@@ -2449,13 +2478,6 @@ export type ProviderAuthError1 = {
     field?: string
     message?: string
     kind?: string
-  }
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
   }
 }
 
@@ -5554,6 +5576,99 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
+export type InjectionSetPrefixData = {
+  body?: InjectionPrefixPayload
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/injection/prefix/{sessionID}"
+}
+
+export type InjectionSetPrefixErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type InjectionSetPrefixError = InjectionSetPrefixErrors[keyof InjectionSetPrefixErrors]
+
+export type InjectionSetPrefixResponses = {
+  /**
+   * Success
+   */
+  200: string
+}
+
+export type InjectionSetPrefixResponse = InjectionSetPrefixResponses[keyof InjectionSetPrefixResponses]
+
+export type InjectionSetSuffixData = {
+  body?: InjectionSuffixPayload
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/injection/suffix/{sessionID}"
+}
+
+export type InjectionSetSuffixErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type InjectionSetSuffixError = InjectionSetSuffixErrors[keyof InjectionSetSuffixErrors]
+
+export type InjectionSetSuffixResponses = {
+  /**
+   * Success
+   */
+  200: string
+}
+
+export type InjectionSetSuffixResponse = InjectionSetSuffixResponses[keyof InjectionSetSuffixResponses]
+
+export type InjectionClearData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/injection/{sessionID}"
+}
+
+export type InjectionClearErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type InjectionClearError = InjectionClearErrors[keyof InjectionClearErrors]
+
+export type InjectionClearResponses = {
+  /**
+   * Success
+   */
+  200: string
+}
+
+export type InjectionClearResponse = InjectionClearResponses[keyof InjectionClearResponses]
+
 export type InstanceDisposeData = {
   body?: never
   path?: never
@@ -5900,6 +6015,40 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type PrefixListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/prefix"
+}
+
+export type PrefixListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type PrefixListError = PrefixListErrors[keyof PrefixListErrors]
+
+export type PrefixListResponses = {
+  /**
+   * List of directive prefix entries
+   */
+  200: Array<{
+    prefixes: Array<string>
+    description?: string
+    builtin?: string
+    command?: string
+    styleId?: string
+  }>
+}
+
+export type PrefixListResponse = PrefixListResponses[keyof PrefixListResponses]
 
 export type McpStatusData = {
   body?: never
