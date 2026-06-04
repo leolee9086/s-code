@@ -1328,7 +1328,7 @@ export const layer = Layer.effect(
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
             lastUser.id < lastAssistant.id &&
-            !isEvolveMode()
+            (!isEvolveMode() || session.parentID)
           ) {
             const orphan = lastAssistantMsg?.parts.find(
               (part): part is SessionLegacy.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),
