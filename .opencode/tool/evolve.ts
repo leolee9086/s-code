@@ -42,19 +42,18 @@ export default tool({
 
     const { version } = JSON.parse(readFileSync(pathM.join(pkgDir, "package.json"), "utf-8"))
 
-    // 3. 写续进消息（两处：管道用 + loop() 安全网）
-    const msgFile = pathM.join(tempDir, ".evolve-input.txt")
-    writeFileSync(msgFile, args.message as string, "utf-8")
+    // 3. 写续进消息 + 环境变量
+    //   - .evolve-msg.txt 由 TUI session 路由的进化模式自动提交
+    //   - S_CODE_EVOLVE=1 激活进化模式
     writeFileSync(pathM.join(tempDir, ".evolve-msg.txt"), args.message as string, "utf-8")
     process.env["S_CODE_EVOLVE"] = "1"
     process.env["S_CODE_TEMP"] = tempDir
 
     const sessionId = ctx?.sessionID
-    // 一条 cmd 命令：先提交续进消息，再开 TUI
-    // msgFile 无空格，不需要引号；cmd.exe 原生支持 < > && 无需嵌套 cmd /c
-    const devCmd = (sessionId
-      ? `bun run --conditions=browser ./src/index.ts run --session ${sessionId} < ${msgFile} >nul 2>&1 && bun run --conditions=browser ./src/index.ts --session ${sessionId}`
-      : "bun run dev")
+    // 直接开 TUI，session 路由里新增的进化模式逻辑会自动读 .evolve-msg.txt 并提交
+    const devCmd = sessionId
+      ? `bun run --conditions=browser ./src/index.ts --session ${sessionId}`
+      : "bun run dev"
 
     // 4. 启动新窗口
     cp.spawn("cmd.exe", ["/c", "start", "", "cmd", "/c", devCmd], {

@@ -30,6 +30,7 @@ const apiLayer = HttpRouter.serve(
   Layer.provide(Layer.mock(Config.Service)({})),
   Layer.provide(
     Layer.mock(Installation.Service)({
+      info: () => Effect.succeed({ version: "9.9.9", latest: "9.9.9" }),
       method: () => Effect.succeed("npm"),
       latest: () => Effect.succeed("9.9.9"),
       upgrade: () => Effect.void,

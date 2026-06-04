@@ -1332,28 +1332,6 @@ export const layer = Layer.effect(
             yield* slog.info("exiting loop")
             break
           }
-          if (isEvolveMode() && lastAssistant?.finish && !["tool-calls"].includes(lastAssistant.finish) && !hasToolCalls) {
-            // 进化模式：禁止循环退出，自动创建新 user message 强制继续
-            const continueMsg: SessionLegacy.User = {
-              id: MessageID.ascending(),
-              sessionID,
-              role: "user",
-              time: { created: Date.now() },
-              agent: lastUser.agent,
-              model: lastUser.model,
-            }
-            yield* sessions.updateMessage(continueMsg)
-            yield* sessions.updatePart({
-              id: PartID.ascending(),
-              messageID: continueMsg.id,
-              sessionID,
-              type: "text",
-              text: "你在进化模式下，本轮未调用 evolve。请继续工作：分析进展、使用工具、准备就绪后调用 evolve 进入下一轮。",
-              synthetic: true,
-            } satisfies SessionLegacy.TextPart)
-            yield* slog.info("evolve mode: injected continue message, looping")
-            continue
-          }
 
           step++
           if (step === 1)

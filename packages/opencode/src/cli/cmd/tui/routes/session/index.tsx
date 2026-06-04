@@ -91,6 +91,7 @@ import { SessionRetry } from "@/session/retry"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
+import { isEvolveMode, readEvolveMessage } from "@/evolve/file-protocol"
 
 addDefaultParsers(parsers.parsers)
 
@@ -278,6 +279,21 @@ export function Session() {
       }
       editor.reconnect(result.data.directory)
       await sync.session.sync(sessionID)
+
+      // 进化模式：自动读取 .evolve-msg.txt 并提交到当前 session
+      if (isEvolveMode()) {
+        const evolveMsg = readEvolveMessage()
+        if (evolveMsg && !evolveSubmitted) {
+          evolveSubmitted = true
+          prompt?.set({ input: evolveMsg, parts: [] })
+          // agent/model 可能还没就绪，重试最多 60 秒
+          for (let i = 0; i < 30; i++) {
+            if (prompt && await prompt.submit()) break
+            await new Promise(r => setTimeout(r, 2000))
+          }
+        }
+      }
+
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
     })().catch((error) => {
       if (route.sessionID !== sessionID) return
@@ -308,6 +324,7 @@ export function Session() {
   })
 
   let seeded = false
+  let evolveSubmitted = false
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef | undefined
   const bind = (r: PromptRef | undefined) => {

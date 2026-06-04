@@ -1,1 +1,1 @@
-进化模式强制循环机制已完整实现 + 全部类型错误已修复。类型检查通过（0 error），构建成功 v1.15.13。下一轮建议：验证进化模式运行时行为，或在真实 session 中启动进化测试。也可考虑完善 External Injection API 的前缀/后缀注入测试或 HTTP 端点测试。
+验证最终修复：TUI session 路由新增进化模式自动提交（readEvolveMessage + prompt.submit），evolve 工具只写 .evolve-msg.txt 开 TUI，无需 run 命令或 stdin 管道。确认新窗口正常显示 TUI 并加载 session 消息。
