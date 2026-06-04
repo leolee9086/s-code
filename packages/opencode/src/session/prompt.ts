@@ -1538,25 +1538,30 @@ export const layer = Layer.effect(
             }
 
             if (result === "stop" && isEvolveMode()) {
-              // 进化模式：禁止纯文本结束，自动创建新 user message 强制继续
-              const continueMsg: SessionLegacy.User = {
-                id: MessageID.ascending(),
-                sessionID,
-                role: "user",
-                time: { created: Date.now() },
-                agent: lastUser.agent,
-                model: lastUser.model,
+              // 进化模式：仅当最后一条 user message 是系统合成时才强制继续
+              const lastUserMsg = msgs.findLast(
+                (m) => m.info.role === "user" && m.info.id === lastUser.id,
+              )
+              if (lastUserMsg?.parts.some((p) => p.type === "text" && p.synthetic)) {
+                const continueMsg: SessionLegacy.User = {
+                  id: MessageID.ascending(),
+                  sessionID,
+                  role: "user",
+                  time: { created: Date.now() },
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                }
+                yield* sessions.updateMessage(continueMsg)
+                yield* sessions.updatePart({
+                  id: PartID.ascending(),
+                  messageID: continueMsg.id,
+                  sessionID,
+                  type: "text",
+                text: "你在进化模式下，不能直接回复。必须调用 evolve({ message: '本轮总结和下轮目标' }) 来结束本轮进化。请分析进展并使用工具，准备就绪后调用 evolve。",
+                synthetic: true,
+              } satisfies SessionLegacy.TextPart)
+              return "continue" as const
               }
-              yield* sessions.updateMessage(continueMsg)
-              yield* sessions.updatePart({
-                id: PartID.ascending(),
-                messageID: continueMsg.id,
-                sessionID,
-                type: "text",
-              text: "你在进化模式下，不能直接回复。必须调用 evolve({ message: '本轮总结和下轮目标' }) 来结束本轮进化。请分析进展并使用工具，准备就绪后调用 evolve。",
-              synthetic: true,
-            } satisfies SessionLegacy.TextPart)
-            return "continue" as const
             }
             if (result === "stop") return "break" as const
             if (result === "compact") {
@@ -1673,6 +1678,14 @@ export const layer = Layer.effect(
 
     const command = Effect.fn("SessionPrompt.command")(function* (input: CommandInput) {
       yield* elog.info("command", { sessionID: input.sessionID, command: input.command, agent: input.agent })
+
+      // 内建命令：停止进化模式
+      if (input.command === "stop-evolve") {
+        delete process.env["S_CODE_EVOLVE"]
+        yield* elog.info("evolve mode stopped by slash command")
+        return yield* lastAssistant(input.sessionID)
+      }
+
       const cmd = yield* commands.get(input.command)
       if (!cmd) {
         const available = (yield* commands.list()).map((c) => c.name)
