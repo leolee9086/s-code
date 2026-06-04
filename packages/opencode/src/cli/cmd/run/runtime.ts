@@ -15,6 +15,7 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { MessageID } from "@/session/schema"
+import { isEvolveMode, readEvolveMessage } from "@/evolve/file-protocol"
 import { createRunDemo } from "./demo"
 import { resolveModelInfo, resolveRunTuiConfig, resolveSessionInfo } from "./runtime.boot"
 import { createRuntimeLifecycle } from "./runtime.lifecycle"
@@ -214,6 +215,14 @@ async function runInteractiveRuntime(input: RunRuntimeInput): Promise<void> {
         "opencode.model.variant": state.activeVariant,
         "session.id": state.sessionID || undefined,
       })
+
+      // 进化模式：将续进消息设为初始输入，TUI 启动后自动提交
+      if (isEvolveMode() && !input.initialInput) {
+        const evolveMsg = readEvolveMessage()
+        if (evolveMsg) {
+          input.initialInput = evolveMsg
+        }
+      }
       const ensureSession = () => {
         if (!input.resolveSession || state.sessionID) {
           return Promise.resolve()

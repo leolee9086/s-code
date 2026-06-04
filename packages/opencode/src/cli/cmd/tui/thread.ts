@@ -187,6 +187,7 @@ export const TuiThreadCommand = cmd({
       }
 
       const prompt = await input(args.prompt)
+
       const config = await TuiConfig.get()
 
       const network = resolveNetworkOptionsNoConfig(args)

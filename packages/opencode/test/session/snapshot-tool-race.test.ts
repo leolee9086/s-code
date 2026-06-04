@@ -46,6 +46,7 @@ import { Env } from "../../src/env"
 import { Question } from "../../src/question"
 import { Image } from "../../src/image/image"
 import { Skill } from "../../src/skill"
+import { Injection } from "../../src/session/injection"
 import { SystemPrompt } from "../../src/session/system"
 import { Todo } from "../../src/session/todo"
 import { SessionCompaction } from "../../src/session/compaction"
@@ -174,6 +175,7 @@ function makeHttp() {
       Layer.provideMerge(proc),
       Layer.provideMerge(registry),
       Layer.provideMerge(trunc),
+      Layer.provide(Injection.defaultLayer),
       Layer.provide(Instruction.defaultLayer),
       Layer.provide(SystemPrompt.defaultLayer),
       Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),

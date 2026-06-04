@@ -9,6 +9,8 @@ import { SessionRevert } from "./revert"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
+import { isEvolveMode, readEvolveMessage, writeEvolveMessage } from "../evolve/file-protocol"
+import { Injection } from "./injection"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
@@ -123,6 +125,7 @@ export const layer = Layer.effect(
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
     const scope = yield* Scope.Scope
     const instruction = yield* Instruction.Service
+    const injection = yield* Injection.Service
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
@@ -1313,7 +1316,8 @@ export const layer = Layer.effect(
             lastAssistant?.finish &&
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
-            lastUser.id < lastAssistant.id
+            lastUser.id < lastAssistant.id &&
+            !isEvolveMode()
           ) {
             const orphan = lastAssistantMsg?.parts.find(
               (part): part is SessionLegacy.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),
@@ -1327,6 +1331,28 @@ export const layer = Layer.effect(
             }
             yield* slog.info("exiting loop")
             break
+          }
+          if (isEvolveMode() && lastAssistant?.finish && !["tool-calls"].includes(lastAssistant.finish) && !hasToolCalls) {
+            // 进化模式：禁止循环退出，自动创建新 user message 强制继续
+            const continueMsg: SessionLegacy.User = {
+              id: MessageID.ascending(),
+              sessionID,
+              role: "user",
+              time: { created: Date.now() },
+              agent: lastUser.agent,
+              model: lastUser.model,
+            }
+            yield* sessions.updateMessage(continueMsg)
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              messageID: continueMsg.id,
+              sessionID,
+              type: "text",
+              text: "你在进化模式下，本轮未调用 evolve。请继续工作：分析进展、使用工具、准备就绪后调用 evolve 进入下一轮。",
+              synthetic: true,
+            } satisfies SessionLegacy.TextPart)
+            yield* slog.info("evolve mode: injected continue message, looping")
+            continue
           }
 
           step++
@@ -1469,6 +1495,27 @@ export const layer = Layer.effect(
               }
             }
 
+            // 通用前缀注入：注入调用方设置的 prefix 消息
+            // 优先级：显式注入 > 进化文件协议
+            let injectedPrefix = false
+            const prefixParts = yield* injection.consumePrefix(sessionID)
+            if (prefixParts.length > 0) {
+              const userEntry = msgs.find((m) => m.info.id === lastUser.id)
+              if (userEntry) {
+                for (const p of prefixParts) {
+                  userEntry.parts.push({
+                    id: PartID.ascending(),
+                    messageID: lastUser.id,
+                    sessionID,
+                    type: p.type as "text",
+                    text: p.text,
+                    synthetic: p.synthetic ?? true,
+                  })
+                }
+                injectedPrefix = true
+              }
+            }
+
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
             const [skills, env, instructions, modelMsgs] = yield* Effect.all([
@@ -1512,6 +1559,27 @@ export const layer = Layer.effect(
               }
             }
 
+            if (result === "stop" && isEvolveMode()) {
+              // 进化模式：禁止纯文本结束，自动创建新 user message 强制继续
+              const continueMsg: SessionLegacy.User = {
+                id: MessageID.ascending(),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(continueMsg)
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                messageID: continueMsg.id,
+                sessionID,
+                type: "text",
+              text: "你在进化模式下，不能直接回复。必须调用 evolve({ message: '本轮总结和下轮目标' }) 来结束本轮进化。请分析进展并使用工具，准备就绪后调用 evolve。",
+              synthetic: true,
+            } satisfies SessionLegacy.TextPart)
+            return "continue" as const
+            }
             if (result === "stop") return "break" as const
             if (result === "compact") {
               yield* compaction.create({
@@ -1522,6 +1590,51 @@ export const layer = Layer.effect(
                 overflow: !handle.message.finish,
               })
             }
+
+            // 通用后缀注入：检查是否有调用方注入的后缀
+            const suffixParts = yield* injection.consumeSuffix(sessionID)
+            if (suffixParts.length > 0) {
+              for (const p of suffixParts) {
+                yield* sessions.updatePart({
+                  id: PartID.ascending(),
+                  messageID: lastUser.id,
+                  sessionID,
+                  type: p.type as "text",
+                  text: p.text,
+                  synthetic: p.synthetic ?? true,
+                })
+              }
+            }
+
+            // 轮次完成回调：允许外部程序化控制
+            const roundHandler = yield* injection.getRoundHandler(sessionID)
+            if (roundHandler) {
+              const toolCalls = [] as Array<{ tool: string; callID: string }>
+              const decision = yield* roundHandler({
+                sessionID,
+                round: step,
+                finish: handle.message.finish,
+                toolCalls,
+                lastAssistantMessage: undefined,
+              })
+              if (decision.action === "stop") {
+                return "break" as const
+              }
+              if (decision.action === "inject") {
+                for (const p of decision.parts) {
+                  yield* sessions.updatePart({
+                    id: PartID.ascending(),
+                    messageID: lastUser.id,
+                    sessionID,
+                    type: p.type as "text",
+                    text: p.text,
+                    synthetic: p.synthetic ?? true,
+                  })
+                }
+              }
+              // "continue" → 继续循环
+            }
+
             return "continue" as const
           }).pipe(
             Effect.ensuring(instruction.clear(handle.message.id)),
@@ -1538,6 +1651,37 @@ export const layer = Layer.effect(
 
     const loop: (input: LoopInput) => Effect.Effect<SessionLegacy.WithParts> = Effect.fn("SessionPrompt.loop")(
       function* (input: LoopInput) {
+        // 进化模式：如有待处理的续进消息，自动创建一条用户消息并持久化到数据库。
+        // runLoop 随后会加载到这条新消息并自然继续处理（即使 session 之前已完成），
+        // 无需用户手动输入任何内容。
+        if (isEvolveMode()) {
+          const evolveMsg = readEvolveMessage()
+          if (evolveMsg) {
+            const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
+              Effect.provideService(Database.Service, database),
+            )
+            const { user: lastUser } = MessageV2.latest(msgs)
+            if (lastUser) {
+              const evolveUserMsg: SessionLegacy.User = {
+                id: MessageID.ascending(),
+                sessionID: input.sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(evolveUserMsg)
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                messageID: evolveUserMsg.id,
+                sessionID: input.sessionID,
+                type: "text",
+                text: evolveMsg,
+                synthetic: true,
+              } satisfies SessionLegacy.TextPart)
+            }
+          }
+        }
         return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
       },
     )
@@ -1708,6 +1852,7 @@ export const defaultLayer = Layer.suspend(() =>
         CrossSpawnSpawner.defaultLayer,
         RuntimeFlags.defaultLayer,
         EventV2Bridge.defaultLayer,
+        Injection.defaultLayer,
       ),
     ),
   ),

@@ -69,9 +69,11 @@ import { PtyConnectApi } from "./groups/pty"
 import { eventHandlers } from "./handlers/event"
 import { configHandlers } from "./handlers/config"
 import { controlHandlers } from "./handlers/control"
+import { globalHandlers } from "./handlers/global"
 import { experimentalHandlers } from "./handlers/experimental"
 import { fileHandlers } from "./handlers/file"
-import { globalHandlers } from "./handlers/global"
+import { injectionHandlers } from "./handlers/injection"
+import { Injection } from "@/session/injection"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
 import { permissionHandlers } from "./handlers/permission"
@@ -134,6 +136,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     configHandlers,
     experimentalHandlers,
     fileHandlers,
+    injectionHandlers,
     instanceHandlers,
     mcpHandlers,
     projectHandlers,
@@ -235,6 +238,7 @@ export function createRoutes(
       AppFileSystem.defaultLayer,
       FetchHttpClient.layer,
       HttpServer.layerServices,
+      Injection.defaultLayer,
     ]),
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(InstanceLayer.layer),

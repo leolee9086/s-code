@@ -5,6 +5,7 @@ import { InstanceState } from "@/effect/instance-state"
 import type * as Tool from "./tool"
 import { containsPath } from "../project/instance-context"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { isEvolveMode, isInEvolveScope } from "../evolve/file-protocol"
 
 type Kind = "file" | "directory"
 
@@ -21,6 +22,9 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
   if (!target) return
 
   if (options?.bypass) return
+
+  // 进化模式下，白名单目录免授权
+  if (isEvolveMode() && isInEvolveScope(target)) return
 
   const ins = yield* InstanceState.context
   const full = process.platform === "win32" ? AppFileSystem.normalizePath(target) : target

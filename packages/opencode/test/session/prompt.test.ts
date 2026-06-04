@@ -31,6 +31,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { SessionCompaction } from "../../src/session/compaction"
 import { SessionSummary } from "../../src/session/summary"
+import { Injection } from "../../src/session/injection"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
@@ -226,6 +227,7 @@ function makePrompt(input?: { processor?: "blocking" }) {
     Layer.provideMerge(proc),
     Layer.provideMerge(registry),
     Layer.provideMerge(trunc),
+    Layer.provide(Injection.defaultLayer),
     Layer.provide(Instruction.defaultLayer),
     Layer.provide(SystemPrompt.defaultLayer),
     Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
