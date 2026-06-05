@@ -35,6 +35,10 @@ import { makeWeibo } from "./engines/weibo"
 import { makeReddit } from "./engines/reddit"
 import { makeVimeo } from "./engines/vimeo"
 import { makeStackExchange } from "./engines/stackexchange"
+import { makeGoogleNews } from "./engines/google-news"
+import { makeYouTube } from "./engines/youtube"
+import { makeGoogleScholar } from "./engines/google-scholar"
+import { makeTwitter } from "./engines/twitter"
 
 
 /**
@@ -180,6 +184,19 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 0,
+    })))
+  }
+
+  // YouTube 视频搜索 — 全球最大视频平台
+  // 通过 HTML 解析 YouTube 搜索结果页
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeYouTube(makeEngineConfig({
+      name: "youtube",
+      weight: 1.2,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 8,
+      priority: 2,
+      requiresKey: false,
     })))
   }
 
@@ -377,6 +394,18 @@ export function selectEngines(
     })))
   }
 
+  // Twitter/X — 社交搜索
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeTwitter(makeEngineConfig({
+      name: "twitter",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // Google Images — 图片搜索（Google JSON API）
   if (!flags) {
     engines.push(makeGoogleImages(makeEngineConfig({
@@ -389,7 +418,7 @@ export function selectEngines(
     })))
   }
 
-  // 学术类查询：Arxiv + Semantic Scholar
+  // 学术类查询：Arxiv + Semantic Scholar + Google Scholar
   if (!flags || flags?.queryType === "academic") {
     engines.push(makeArxiv(makeEngineConfig({
       name: "arxiv",
@@ -405,6 +434,14 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 1,
+      requiresKey: false,
+    })))
+    engines.push(makeGoogleScholar(makeEngineConfig({
+      name: "google-scholar",
+      weight: 1.2,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 2,
       requiresKey: false,
     })))
   }
@@ -448,7 +485,7 @@ export function selectEngines(
     engines.push(makeStackExchange(makeEngineConfig({ name: "stackexchange", weight: 0.8, timeout: 10000, maxResults: 5, requiresKey: false })))
   }
 
-  // 新闻类查询：添加 Bing News 专用引擎 + 增大 maxResults
+  // 新闻类查询：添加 Bing News + Google News 专用引擎
   if (flags?.queryType === "news") {
     engines.push(makeBingNews(makeEngineConfig({
       name: "bing-news",
@@ -456,6 +493,14 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 10,
       priority: 2,
+      requiresKey: false,
+    })))
+    engines.push(makeGoogleNews(makeEngineConfig({
+      name: "google-news",
+      weight: 1.2,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 10,
+      priority: 3,
       requiresKey: false,
     })))
     for (const e of engines) {
