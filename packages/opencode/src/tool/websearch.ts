@@ -28,8 +28,8 @@ export const Parameters = Schema.Struct({
   lang: Schema.optional(Schema.String).annotate({
     description: "语言偏好（如 'zh-CN'、'en'、'ja'），用于获取特定语言的结果",
   }),
-  queryType: Schema.optional(Schema.Literals(["general", "news", "video"])).annotate({
-    description: "查询类型 - 'general'（默认，通用搜索）、'news'（新闻搜索，启用新闻专属引擎）、'video'（视频搜索，启用 Bilibili 引擎）",
+  queryType: Schema.optional(Schema.Literals(["general", "news", "video", "academic", "code"])).annotate({
+    description: "查询类型 - 'general'（默认，通用搜索）、'news'（新闻搜索，启用新闻和微信引擎）、'video'（视频搜索，启用 Bilibili 引擎）、'academic'（学术搜索，启用 Arxiv/Semantic Scholar/Wikipedia）、'code'（代码搜索，启用 GitHub）",
   }),
 })
 
@@ -100,8 +100,6 @@ function callMultiEngine(
   return Effect.gen(function* () {
     const engines = Search.Selector.selectEngines({
       brave: !!process.env.BRAVE_API_KEY,
-      xiaohongshu: true,
-      zhihu: true,
       bilibili: true,
       exa: flags.exa,
       parallel: flags.parallel,

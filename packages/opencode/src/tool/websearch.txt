@@ -6,6 +6,11 @@
 - 支持时间范围过滤（day/week/month/year）和语言偏好（zh-CN/en/ja 等）
 - 新闻搜索模式：设置 queryType="news" 将启用 Bing News 专用引擎获取最新新闻
 - 视频搜索模式：设置 queryType="video" 将启用 Bilibili 视频搜索引擎，支持中文视频内容搜索
+- 中文平台搜索：内置微博、知乎、小红书、百度贴吧、豆瓣、今日头条、CSDN 等中文平台的站点限定搜索（通过搜索引擎索引，零风险）
+- 学术搜索模式：设置 queryType="academic" 将启用 Arxiv、Semantic Scholar、Wikipedia 等学术搜索引擎
+- 代码搜索模式：设置 queryType="code" 将启用 GitHub 仓库搜索
+- 微信公众号搜索：默认启用搜狗微信搜索，可检索微信公众号文章
+- 中文网页搜索：默认启用百度搜索（对中文查询自动触发）
 - 自动提取搜索结果的发布日期（支持 ISO 日期、"2 days ago" 等相对日期格式）
 - 结果按域名分组展示，避免同一来源结果过多
 - 提供当前事件和训练数据之外的最新信息
