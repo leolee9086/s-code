@@ -7,7 +7,7 @@ import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { Parser } from "htmlparser2"
 import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
-import { makeSearchResult } from "../engine"
+import { makeSearchResult, parseRelativeDate } from "../engine"
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
@@ -122,7 +122,10 @@ function searchHtmlPost(
 
     if (response.status < 200 || response.status >= 400) return []
     const html: string = yield* response.text
-    if (html.includes('id="challenge-form"')) return []
+    // SearXNG 参考: DDG 可能返回空/极小响应或验证码页
+    if (html.length < 500) return []
+    if (html.includes('id="challenge-form"') || html.includes('id="captcha"')) return []
+    if (response.status === 303 || response.status === 403) return []
 
     const vqdMatch = html.match(/<input[^>]*name=["']vqd["'][^>]*value=["']([^"']+)["']/i)
     if (vqdMatch?.[1]) vqdCache.set(`${query}//${USER_AGENT}`, { vqd: vqdMatch[1], expires: Date.now() + 3600_000 })
@@ -255,8 +258,8 @@ function extractUrl(href: string): string {
 
 function parseHtmlResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = []
-  let current: Partial<{ title: string; url: string; snippet: string }> = {}
-  let inResult = false, depth = 0, inTitle = false, inSnippet = false, textBuf = "", pos = 0
+  let current: { title?: string; url?: string; snippet?: string; dateText?: string; type?: string } = {}
+  let inResult = false, depth = 0, inTitle = false, inSnippet = false, inDate = false, inType = false, textBuf = "", pos = 0
 
   const parser = new Parser({
     onopentag(name, attrs) {
@@ -271,14 +274,44 @@ function parseHtmlResults(html: string, maxResults: number): SearchResult[] {
       if (!inResult) return
       if (name === "a" && cls === "result__a") { inTitle = true; textBuf = ""; current.url = extractUrl(attrs.href ?? "") }
       if (name === "a" && cls === "result__snippet") { inSnippet = true; textBuf = "" }
+      // DuckDuckGo 结果中的日期元素：<span class="result__date">...</span> 或 <span class="result__timestamp">...</span>
+      if ((name === "span" || name === "div") && (cls.includes("result__date") || cls.includes("result__timestamp") || cls.includes("result__extras__date"))) {
+        inDate = true; textBuf = ""
+      }
+      // 内容类型徽章：<span class="result__type">PDF</span> 等
+      if (name === "span" && (cls.includes("result__type") || cls.includes("result__badge"))) {
+        inType = true; textBuf = ""
+      }
     },
-    ontext(text) { if (inTitle || inSnippet) textBuf += text },
+    ontext(text) {
+      if (inTitle || inSnippet || inDate || inType) textBuf += text
+    },
     onclosetag(name) {
       if (!inResult) return
+
+      // 处理日期文本
+      if (inDate && (name === "span" || name === "div")) {
+        current.dateText = (current.dateText ?? "") + textBuf.trim()
+        inDate = false; textBuf = ""
+        return
+      }
+      // 处理类型徽章
+      if (inType && name === "span") {
+        current.type = (current.type ?? "") + textBuf.trim()
+        inType = false; textBuf = ""
+        return
+      }
+
       if (name === "div") {
         depth--; if (depth <= 0) {
           if (current.title && current.url) {
-            pos++; results.push(makeSearchResult({ title: current.title, url: current.url, snippet: current.snippet ?? "", engine: "duckduckgo", position: pos }))
+            pos++
+            const publishedDate = current.dateText ? parseRelativeDate(current.dateText) : undefined
+            results.push(makeSearchResult({
+              title: current.title, url: current.url,
+              snippet: current.snippet ?? "", engine: "duckduckgo",
+              position: pos, publishedDate, category: current.type,
+            }))
             if (results.length >= maxResults) { parser.reset(); return }
           }
           current = {}; inResult = false
@@ -295,7 +328,13 @@ function parseHtmlResults(html: string, maxResults: number): SearchResult[] {
 
   parser.write(html); parser.end()
   if (inResult && current.title && current.url && results.length < maxResults) {
-    pos++; results.push(makeSearchResult({ title: current.title, url: current.url, snippet: current.snippet ?? "", engine: "duckduckgo", position: pos }))
+    pos++
+    const publishedDate = current.dateText ? parseRelativeDate(current.dateText) : undefined
+    results.push(makeSearchResult({
+      title: current.title, url: current.url,
+      snippet: current.snippet ?? "", engine: "duckduckgo",
+      position: pos, publishedDate, category: current.type,
+    }))
   }
   return results
 }

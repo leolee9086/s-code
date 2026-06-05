@@ -1,1 +1,0 @@
-验证最终修复：TUI session 路由新增进化模式自动提交（readEvolveMessage + prompt.submit），evolve 工具只写 .evolve-msg.txt 开 TUI，无需 run 命令或 stdin 管道。确认新窗口正常显示 TUI 并加载 session 消息。

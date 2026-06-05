@@ -6,6 +6,7 @@ import path from "path"
 import * as Log from "@opencode-ai/core/util/log"
 import { containsPath, type InstanceContext } from "../project/instance-context"
 import { InstanceState } from "@/effect/instance-state"
+import { isEvolveMode, isInEvolveScope } from "@/evolve/file-protocol"
 import { lazy } from "@/util/lazy"
 import { Language, type Node } from "web-tree-sitter"
 
@@ -272,10 +273,17 @@ const parse = Effect.fn("ShellTool.parse")(function* (command: string, ps: boole
 
 const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan) {
   if (scan.dirs.size > 0) {
-    const globs = Array.from(scan.dirs).map((dir) => {
+    // 进化模式下，过滤掉白名单目录
+    const filtered = isEvolveMode()
+      ? Array.from(scan.dirs).filter(dir => !isInEvolveScope(dir))
+      : Array.from(scan.dirs)
+    if (filtered.length === 0) return
+
+    const globs = filtered.map((dir) => {
       if (process.platform === "win32") return AppFileSystem.normalizePathPattern(path.join(dir, "*"))
       return path.join(dir, "*")
     })
+
     yield* ctx.ask({
       permission: "external_directory",
       patterns: globs,

@@ -1,15 +1,19 @@
 - 多引擎元搜索：同时搜索 DuckDuckGo、Brave 等多个引擎，自动去重、评分、排序，提供更全面的结果
 - 集成 SearXNG 风格的元搜索引擎架构：并发执行 → 结果聚合（URL 去重 + 标题模糊合并）→ 加权评分（含时效性衰减）→ 域名多样性保证
 - 引擎熔断器：采用指数退避算法（1分钟/5分钟/15分钟），限流（429）自动等待 Retry-After，CAPTCHA/封禁自动暂停 30 分钟
-- 内置 DuckDuckGo + Brave 搜索无需任何 API key 或配置，开箱即用
+- 内置 DuckDuckGo + Bing + Brave 搜索无需任何 API key 或配置，开箱即用
 - 同时支持配置 API key 后的 Exa 和 Parallel 搜索服务
 - 支持时间范围过滤（day/week/month/year）和语言偏好（zh-CN/en/ja 等）
+- 新闻搜索模式：设置 queryType="news" 将启用 Bing News 专用引擎获取最新新闻
+- 视频搜索模式：设置 queryType="video" 将启用 Bilibili 视频搜索引擎，支持中文视频内容搜索
+- 自动提取搜索结果的发布日期（支持 ISO 日期、"2 days ago" 等相对日期格式）
+- 结果按域名分组展示，避免同一来源结果过多
 - 提供当前事件和训练数据之外的最新信息
 - 基于查询返回最相关网站的摘要内容
 - 当需要实时或近期信息且训练数据可能未包含时使用此工具
 
 使用说明：
-  - 默认使用多引擎聚合模式（DuckDuckGo + Brave），无需 API key——开箱即用
+  - 默认使用多引擎聚合模式（DuckDuckGo + Bing + Brave），无需 API key——开箱即用
   - Brave 免费版无需 API key（每月 2000 次查询）；设置 BRAVE_API_KEY 可获得更高额度
   - 使用 Exa 或 Parallel 需要设置 EXA_API_KEY 或 PARALLEL_API_KEY 环境变量
   - 通过 OPENCODE_WEBSEARCH_PROVIDER 环境变量覆盖服务商（可选值："duckduckgo", "exa", "parallel"）
@@ -17,7 +21,7 @@
   - 搜索类型（当可用时）：'auto'（均衡）、'fast'（快速）、'deep'（深度）
   - 时间范围过滤：使用 timeRange 参数按 day/week/month/year 过滤结果
   - 语言偏好：使用 lang 参数指定语言（如 "zh-CN" 获得中文结果）
-  - 每条结果包含标题、URL 和摘要，多引擎结果附带来源标记
+  - 每条结果包含标题、域名、URL、摘要和发布日期，多引擎结果附带来源标记
   - 可为 Exa/Parallel 配置上下文字符数上限以优化 LLM 输出
   - 在单个 API 调用内自动完成搜索
   - 引擎健康状态跨调用持久化：连续失败的引擎会自动暂停并指数退避

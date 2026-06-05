@@ -28,6 +28,9 @@ export const Parameters = Schema.Struct({
   lang: Schema.optional(Schema.String).annotate({
     description: "语言偏好（如 'zh-CN'、'en'、'ja'），用于获取特定语言的结果",
   }),
+  queryType: Schema.optional(Schema.Literals(["general", "news", "video"])).annotate({
+    description: "查询类型 - 'general'（默认，通用搜索）、'news'（新闻搜索，启用新闻专属引擎）、'video'（视频搜索，启用 Bilibili 引擎）",
+  }),
 })
 
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel", "duckduckgo"])
@@ -99,15 +102,17 @@ function callMultiEngine(
       brave: !!process.env.BRAVE_API_KEY,
       xiaohongshu: true,
       zhihu: true,
+      bilibili: true,
       exa: flags.exa,
       parallel: flags.parallel,
       timeRange: params.timeRange,
       lang: params.lang,
+      queryType: params.queryType,
     })
     if (engines.length === 0) return { output: undefined, engines: [] }
 
     const numResults = params.numResults || 8
-    const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}`, numResults)
+    const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}|q:${params.queryType ?? "general"}`, numResults)
 
     // 检查缓存
     const cached = Search.Cache.globalResultCache.get(cacheKey)
@@ -250,36 +255,33 @@ export const WebSearchTool = Tool.define(
               livecrawl: params.livecrawl,
               type: params.type,
               contextMaxCharacters: params.contextMaxCharacters,
+              queryType: params.queryType,
               provider,
             },
           })
 
-          // 验证提供商是否真的可用（DuckDuckGo 始终可用，无需 key）
           if (!providerAvailable(provider)) {
-            const hint = provider === "exa"
-              ? "EXA_API_KEY 环境变量未设置。"
-              : "PARALLEL_API_KEY 环境变量未设置。"
             return {
-              output: `网络搜索 (${provider}) 不可用：${hint} `
-                + "请配置环境变量，或切换到内置的 "
-                + "DuckDuckGo 搜索（无需 API key）。"
-                + "作为备用，可以直接使用 webfetch 工具获取指定 URL 的内容。",
+              output: `网络搜索 (${provider}) 不可用。请配置环境变量或使用 webfetch 工具直接获取指定 URL 的内容。`,
               title: "网络搜索不可用",
               metadata: { provider, available: false, engines: [] as readonly string[] },
             }
           }
 
-          const result = yield* callProvider(http, provider, params, ctx)
+          const result = yield* callProvider(http, provider, params, ctx).pipe(
+            Effect.catch((err: unknown) =>
+              Effect.succeed({
+                output: `搜索请求失败: ${err instanceof Error ? err.message : String(err)}。请检查网络连接后重试。`,
+                engines: [] as readonly string[],
+                metadata: {} as Record<string, unknown>,
+              }),
+            ),
+          )
 
           return {
             output: result.output ?? "未找到搜索结果。请尝试其他查询词。",
             title: `${title}: ${params.query}`,
-            metadata: {
-              provider,
-              available: true,
-              engines: result.engines,
-              ...(result.metadata ?? {}),
-            },
+            metadata: { provider, available: true, engines: result.engines, ...(result.metadata ?? {}) },
           }
         }).pipe(Effect.orDie),
     }

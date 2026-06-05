@@ -3,17 +3,31 @@
 // 每轮 build 结束时写 .evolve-msg.txt，下轮启动时读取并删除。
 // 这是进化模式唯一的外部状态传递路径。
 //
-// 目录：由 S_CODE_TEMP 环境变量指定，默认同级的 s-temp/ 目录
+// 目录：由 S_CODE_TEMP 环境变量指定，查找仓库根目录兜底
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs"
 import path from "path"
 
 function evolveDir(): string {
   const fromEnv = process.env["S_CODE_TEMP"]
   if (fromEnv) return fromEnv
-  // cwd = packages/opencode (dev 模式)
-  // evolution temp 目录 = 仓库根目录下的 s-temp
-  const root = path.resolve(process.cwd(), "..", "..")
-  return path.join(root, "s-temp")
+
+  // s-temp 是仓库根目录的平级目录
+  // cwd 可能是 packages/opencode → 向上两级到 d:/dev → d:/dev/s-temp
+  // 通过查找 .opencode/tool/evolve.ts 定位仓库根目录，再取父目录
+  let dir = process.cwd()
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(path.join(dir, ".opencode", "tool", "evolve.ts"))) {
+      const temp = path.join(path.dirname(dir), "s-temp")
+      if (!existsSync(temp)) mkdirSync(temp, { recursive: true })
+      return temp
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+
+  // 兜底
+  return path.join(dir, "s-temp")
 }
 
 function msgFile(): string {

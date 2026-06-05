@@ -197,21 +197,36 @@ function diversifyByDomain(results: AggregatedResult[], maxPerDomain: number): A
 export function formatResults(results: AggregatedResult[], query: string, ctxSuggestion?: string): string {
   if (results.length === 0) return ""
 
+  /** 从 URL 中提取域名 */
+  function extractDomain(url: string): string {
+    try { return new URL(url).hostname.replace(/^www\./, "") } catch { return url }
+  }
+
   const lines = results.map(
-    (r, i) =>
-      `${i + 1}. ${r.title}\n` +
-      `   URL: ${r.url}\n` +
-      `   来源: ${r.engines.join(" + ")}\n` +
-      `   ${r.snippet ?? ""}` +
-      (r.publishedDate ? `\n   日期: ${new Date(r.publishedDate).toISOString().slice(0, 10)}` : ""),
+    (r, i) => {
+      const meta: string[] = [`[${extractDomain(r.url)}]`]
+      if (r.category) meta.push(r.category.toUpperCase())
+      const engines = r.engines.length === 1 ? r.engines[0] : r.engines.join("+")
+
+      return (
+        `${i + 1}. ${r.title}\n` +
+        `   ${meta.join(" · ")}\n` +
+        `   ${engines} | ${r.url}` +
+        (r.publishedDate ? `\n   日期: ${new Date(r.publishedDate).toISOString().slice(0, 10)}` : "") +
+        `\n   ${r.snippet ?? ""}`
+      )
+    },
   )
 
-  const parts: string[] = [`搜索结果 "${query}"：`, ...lines]
+  const parts: string[] = [
+    `搜索 "${query}" 共 ${results.length} 条结果：`,
+    ...lines,
+  ]
 
   // 如果有拼写建议，追加在末尾
   const suggestion = results.find((r) => r.suggestion)?.suggestion ?? ctxSuggestion
   if (suggestion) {
-    parts.push(`\n💡 您是不是想找: ${suggestion}`)
+    parts.push(`\n您是不是想找: ${suggestion}`)
   }
 
   return parts.join("\n\n")

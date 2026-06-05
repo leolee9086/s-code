@@ -11,7 +11,7 @@
 import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
-import { makeSearchResult } from "../engine"
+import { makeSearchResult, parseRelativeDate } from "../engine"
 import { Parser } from "htmlparser2"
 
 const USER_AGENT =
@@ -78,8 +78,8 @@ function searchSiteScoped(
 
 function parseHtmlResults(html: string, maxResults: number, engineName: string): SearchResult[] {
   const results: SearchResult[] = []
-  let current: Partial<{ title: string; url: string; snippet: string }> = {}
-  let inResult = false, depth = 0, inTitle = false, inSnippet = false, textBuf = "", pos = 0
+  let current: { title?: string; url?: string; snippet?: string; dateText?: string } = {}
+  let inResult = false, depth = 0, inTitle = false, inSnippet = false, inDate = false, textBuf = "", pos = 0
 
   const parser = new Parser({
     onopentag(name, attrs) {
@@ -94,16 +94,27 @@ function parseHtmlResults(html: string, maxResults: number, engineName: string):
       if (!inResult) return
       if (name === "a" && cls === "result__a") { inTitle = true; textBuf = ""; current.url = extractUrl(attrs.href ?? "") }
       if (name === "a" && cls === "result__snippet") { inSnippet = true; textBuf = "" }
+      // 日期元素
+      if ((name === "span" || name === "div") && (cls.includes("result__date") || cls.includes("result__timestamp"))) {
+        inDate = true; textBuf = ""
+      }
     },
-    ontext(text) { if (inTitle || inSnippet) textBuf += text },
+    ontext(text) { if (inTitle || inSnippet || inDate) textBuf += text },
     onclosetag(name) {
       if (!inResult) return
+      if (inDate && (name === "span" || name === "div")) {
+        current.dateText = (current.dateText ?? "") + textBuf.trim()
+        inDate = false; textBuf = ""
+        return
+      }
       if (name === "div") {
         depth--; if (depth <= 0) {
           if (current.title && current.url) {
-            pos++; results.push(makeSearchResult({
+            pos++
+            results.push(makeSearchResult({
               title: current.title, url: current.url,
               snippet: current.snippet ?? "", engine: engineName, position: pos,
+              publishedDate: current.dateText ? parseRelativeDate(current.dateText) : undefined,
             }))
             if (results.length >= maxResults) { parser.reset(); return }
           }
@@ -121,9 +132,11 @@ function parseHtmlResults(html: string, maxResults: number, engineName: string):
 
   parser.write(html); parser.end()
   if (inResult && current.title && current.url && results.length < maxResults) {
-    pos++; results.push(makeSearchResult({
+    pos++
+    results.push(makeSearchResult({
       title: current.title, url: current.url,
       snippet: current.snippet ?? "", engine: engineName, position: pos,
+      publishedDate: current.dateText ? parseRelativeDate(current.dateText) : undefined,
     }))
   }
   return results

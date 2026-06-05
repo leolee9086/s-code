@@ -186,6 +186,67 @@ export interface EngineStatus {
   metrics: EngineMetrics
 }
 
+/**
+ * 解析 DuckDuckGo 等搜索引擎返回的相对日期字符串为时间戳
+ *
+ * 支持格式：
+ * - "X minutes/hours/days/weeks/months/years ago"
+ * - "yesterday", "today"
+ * - "last week/month/year"
+ * - ISO 日期字符串 ("2024-01-15")
+ * - 简短格式 ("3h", "2d", "1w", "6mo", "1y")
+ */
+export function parseRelativeDate(text: string): number | undefined {
+  const now = Date.now()
+  const t = text.trim().toLowerCase()
+
+  // 直接解析 ISO 日期
+  const isoMatch = t.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (isoMatch) return new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`).getTime()
+
+  // "today"
+  if (t === "today") return now
+
+  // "yesterday"
+  if (t === "yesterday") return now - 86_400_000
+
+  // "last week" / "last month" / "last year"
+  const lastMatch = t.match(/^last\s+(week|month|year)$/)
+  if (lastMatch) {
+    const unit = lastMatch[1]
+    if (unit === "week") return now - 7 * 86_400_000
+    if (unit === "month") return now - 30 * 86_400_000
+    if (unit === "year") return now - 365 * 86_400_000
+  }
+
+  // "X minutes/hours/days/weeks/months/years ago"
+  const agoMatch = t.match(/^(\d+)\s*(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s+ago$/)
+  if (agoMatch) {
+    const num = parseInt(agoMatch[1], 10)
+    const unit = agoMatch[2]
+    if (unit.startsWith("minute")) return now - num * 60_000
+    if (unit.startsWith("hour")) return now - num * 3_600_000
+    if (unit.startsWith("day")) return now - num * 86_400_000
+    if (unit.startsWith("week")) return now - num * 7 * 86_400_000
+    if (unit.startsWith("month")) return now - num * 30 * 86_400_000
+    if (unit.startsWith("year")) return now - num * 365 * 86_400_000
+  }
+
+  // 简短格式 "3h", "2d", "1w", "6mo", "1y"
+  const shortMatch = t.match(/^(\d+)\s*(h|hr|d|w|mo|y)$/)
+  if (shortMatch) {
+    const num = parseInt(shortMatch[1], 10)
+    const unit = shortMatch[2]
+    if (unit === "h" || unit === "hr") return now - num * 3_600_000
+    if (unit === "d") return now - num * 86_400_000
+    if (unit === "w") return now - num * 7 * 86_400_000
+    if (unit === "mo") return now - num * 30 * 86_400_000
+    if (unit === "y") return now - num * 365 * 86_400_000
+  }
+
+  return undefined
+}
+
 export function makeEngineStatus(): EngineStatus {
   return {
     consecutiveFailures: 0,

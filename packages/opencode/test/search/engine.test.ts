@@ -6,6 +6,7 @@ import {
   makeSearchOptions,
   makeEngineMetrics,
   makeEngineStatus,
+  parseRelativeDate,
   EngineError,
   CaptchaError,
   RateLimitError,
@@ -169,5 +170,76 @@ describe("search error types", () => {
   test("TimeoutError for engine timeout", () => {
     const err = new TimeoutError({ engine: "ddg", message: "request timed out" })
     expect(err.engine).toBe("ddg")
+  })
+})
+
+// ── parseRelativeDate ────────────────────────────────
+
+describe("parseRelativeDate", () => {
+  test("parses ISO date", () => {
+    const result = parseRelativeDate("2024-06-15")
+    expect(result).toBe(new Date("2024-06-15").getTime())
+  })
+
+  test("parses 'today'", () => {
+    const result = parseRelativeDate("today")
+    expect(result).toBeGreaterThan(Date.now() - 1000)
+  })
+
+  test("parses 'yesterday'", () => {
+    const result = parseRelativeDate("yesterday")
+    expect(result).toBeLessThan(Date.now())
+    expect(result).toBeGreaterThan(Date.now() - 2 * 86_400_000)
+  })
+
+  test("parses 'last week'", () => {
+    const result = parseRelativeDate("last week")
+    expect(result).toBeLessThan(Date.now())
+    expect(result).toBeGreaterThan(Date.now() - 8 * 86_400_000)
+  })
+
+  test("parses '2 days ago'", () => {
+    const result = parseRelativeDate("2 days ago")
+    const twoDaysMs = 2 * 86_400_000
+    expect(Math.abs(result! - (Date.now() - twoDaysMs))).toBeLessThan(1000)
+  })
+
+  test("parses '5 hours ago'", () => {
+    const result = parseRelativeDate("5 hours ago")
+    const fiveHoursMs = 5 * 3_600_000
+    expect(Math.abs(result! - (Date.now() - fiveHoursMs))).toBeLessThan(1000)
+  })
+
+  test("parses '3 weeks ago'", () => {
+    const result = parseRelativeDate("3 weeks ago")
+    const threeWeeksMs = 3 * 7 * 86_400_000
+    expect(Math.abs(result! - (Date.now() - threeWeeksMs))).toBeLessThan(1000)
+  })
+
+  test("parses short format '3h'", () => {
+    const result = parseRelativeDate("3h")
+    expect(Math.abs(result! - (Date.now() - 3 * 3_600_000))).toBeLessThan(1000)
+  })
+
+  test("parses short format '2d'", () => {
+    const result = parseRelativeDate("2d")
+    expect(Math.abs(result! - (Date.now() - 2 * 86_400_000))).toBeLessThan(1000)
+  })
+
+  test("returns undefined for unparseable text", () => {
+    expect(parseRelativeDate("some random text")).toBeUndefined()
+    expect(parseRelativeDate("")).toBeUndefined()
+  })
+
+  test("parses '1 month ago'", () => {
+    const result = parseRelativeDate("1 month ago")
+    const oneMonthMs = 30 * 86_400_000
+    expect(Math.abs(result! - (Date.now() - oneMonthMs))).toBeLessThan(1000)
+  })
+
+  test("parses '1 year ago'", () => {
+    const result = parseRelativeDate("1 year ago")
+    const oneYearMs = 365 * 86_400_000
+    expect(Math.abs(result! - (Date.now() - oneYearMs))).toBeLessThan(1000)
   })
 })

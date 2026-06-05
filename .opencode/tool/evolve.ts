@@ -48,15 +48,18 @@ export default tool({
       ? knownDirs.find(d => d !== currentDir)!
       : "dist-tick"
 
+    // s-temp 是仓库根目录的平级目录（d:/dev/s-temp），不是子目录
+    const sTempDir = pathM.join(pathM.dirname(worktree), "s-temp")
+
     // 轮次计数器，确保每次 evolve 输出不同文件名，永不文件锁冲突
-    const countPath = pathM.join(worktree, "s-temp", ".evolve-round")
+    const countPath = pathM.join(sTempDir, ".evolve-round")
     let round = 0
     try {
       const { readFileSync } = await import("fs")
       round = Number(readFileSync(countPath, "utf-8").trim()) || 0
     } catch { /* 首次默认 0 */ }
     const { writeFileSync, mkdirSync } = await import("fs")
-    mkdirSync(pathM.join(worktree, "s-temp"), { recursive: true })
+    mkdirSync(sTempDir, { recursive: true })
     writeFileSync(countPath, String(round + 1), "utf-8")
 
     const binarySuffix = `${sessionId}-${round}`
@@ -91,12 +94,11 @@ export default tool({
     // s-temp/.evolve-msg.txt，新窗口启动后自动注入续进消息。
     const prompt = args.message as string
     // 包 <system-reminder> 标签，让 AI 能区分系统注入与用户实际输入
-    const taggedMsg = `<system-reminder>\n${prompt}\n</system-reminder>`
+    const taggedMsg = `<system-remotion>\n${prompt}\n</system-remotion>`
     try {
       const { writeFileSync, mkdirSync } = await import("fs")
-      const evolveDir = pathM.join(worktree, "s-temp")
-      mkdirSync(evolveDir, { recursive: true })
-      writeFileSync(pathM.join(evolveDir, ".evolve-msg.txt"), taggedMsg, "utf-8")
+      mkdirSync(sTempDir, { recursive: true })
+      writeFileSync(pathM.join(sTempDir, ".evolve-msg.txt"), taggedMsg, "utf-8")
     } catch {
       // 写入失败不应阻塞进化
     }
@@ -106,9 +108,12 @@ export default tool({
       ? ["-s", sessionId, "--prompt", prompt, "--channel", channel]
       : ["--prompt", prompt, "--channel", channel]
 
+    // 必须传递 S_CODE_TEMP 和 S_CODE_EVOLVE，否则子进程的 evolveDir() 推算路径错误，
+    // isInEvolveScope() 无法将 s-temp 加入白名单，导致工具反复弹 external_directory 授权。
     const env = {
       ...process.env as Record<string, string>,
       S_CODE_EVOLVE: "1",
+      S_CODE_TEMP: sTempDir,
     }
 
     if (process.platform === "win32") {
@@ -153,8 +158,11 @@ export default tool({
       }
     }
 
-    // 4. 自杀：跨平台兼容，不依赖特定 shell 命令
-    setTimeout(() => process.exit(0), 2000)
+    // 下个 tick 立即自杀，确保 tool 返回值先传播出去。
+    // process.exit(0) 触发 Worker exit 事件，
+    // thread.ts 通过 onWorkerExit 路由到 TUI lifecycle.exit()，
+    // 走完整退出路径（cleanup → renderer.destroy → stop），与 Ctrl+C 行为完全一致。
+    setImmediate(() => process.exit(0))
 
     return lines.join("\n")
   },

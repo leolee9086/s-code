@@ -8,7 +8,10 @@ import { makeEngineConfig } from "./engine"
 import type { SearchEngine } from "./engine"
 import { makeDuckDuckGo } from "./engines/duckduckgo"
 import { makeBrave } from "./engines/brave"
+import { makeBing } from "./engines/bing"
+import { makeBingNews } from "./engines/bing-news"
 import { makeSiteScopedEngine } from "./engines/site-scoped"
+import { makeBilibili } from "./engines/bilibili"
 
 export interface SelectFlags {
   exa?: boolean
@@ -16,8 +19,9 @@ export interface SelectFlags {
   brave?: boolean
   xiaohongshu?: boolean
   zhihu?: boolean
+  bilibili?: boolean
   /** 查询类型提示，用于智能选择相关引擎 */
-  queryType?: "general" | "code" | "news" | "academic" | "social"
+  queryType?: "general" | "code" | "news" | "academic" | "social" | "video"
   /** 优先返回最新结果 */
   timeRange?: "day" | "week" | "month" | "year"
   /** 语言偏好 */
@@ -35,6 +39,17 @@ export function selectEngines(
     weight: 1.0,
     timeout: Duration.toMillis(Duration.seconds(15)),
     maxResults: 8,
+  })))
+
+  // Bing 搜索 — 无需 API key，通过 HTML 解析实现
+  // 在 DuckDuckGo 不可用时作为可靠备用
+  engines.push(makeBing(makeEngineConfig({
+    name: "bing",
+    weight: 0.9,
+    timeout: Duration.toMillis(Duration.seconds(15)),
+    maxResults: 8,
+    priority: 1,
+    requiresKey: false,
   })))
 
   // Brave Search — 有 API key 时使用认证调用提高额度
@@ -74,9 +89,28 @@ export function selectEngines(
     })))
   }
 
-  // 根据查询类型动态调整引擎配置
-  // 新闻类查询：启用更大的 maxResults
+  // Bilibili 视频搜索 — 调用 Bilibili 内部 JSON API
+  // 无需 API key，通过随机 buvid3 cookie 绕过基础反爬
+  if (flags?.bilibili || !flags || flags?.queryType === "video") {
+    engines.push(makeBilibili(makeEngineConfig({
+      name: "bilibili",
+      weight: 1.0,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+    })))
+  }
+
+  // 新闻类查询：添加 Bing News 专用引擎 + 增大 maxResults
   if (flags?.queryType === "news") {
+    engines.push(makeBingNews(makeEngineConfig({
+      name: "bing-news",
+      weight: 1.1,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 10,
+      priority: 2,
+      requiresKey: false,
+    })))
     for (const e of engines) {
       // @ts-ignore - 运行时调整 maxResults
       e.config.maxResults = Math.max(e.config.maxResults, 10)
