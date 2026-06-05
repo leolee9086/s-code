@@ -6,8 +6,13 @@
 
 Usage notes:
   - IMPORTANT: if another tool is present that offers better web fetching capabilities, is more targeted to the task, or has fewer restrictions, prefer using that tool instead of this one.
-  - The URL must be a fully-formed valid URL
-  - HTTP URLs will be automatically upgraded to HTTPS
+  - The URL must be a fully-formed valid URL starting with http:// or https://
   - Format options: "markdown" (default), "text", or "html"
-  - This tool is read-only and does not modify any files
-  - Results may be summarized if the content is very large
+    - "markdown": HTML pages are converted to Markdown (best for reading article content)
+    - "text": HTML pages are stripped to plain text (best for LLM consumption)
+    - "html": Raw HTML is returned as-is (use when you need to inspect the full markup)
+  - Images are returned as base64-encoded file attachments
+  - Fetch results are cached in memory for 60 seconds to avoid duplicate network requests
+  - Timeout defaults to 30 seconds, configurable up to 120 seconds
+  - Maximum response size is 5MB
+  - HTTP URLs are automatically upgraded to HTTPS

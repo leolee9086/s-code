@@ -228,7 +228,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: { promptOps },
           messages: [],
           metadata: () => Effect.void,
@@ -264,7 +264,7 @@ describe("tool.task", () => {
             sessionID: chat.id,
             messageID: assistant.id,
             agent: "build",
-            abort: new AbortController().signal,
+            channel: "test",            abort: new AbortController().signal,
             extra: { promptOps, ...extra },
             messages: [],
             metadata: () => Effect.void,
@@ -323,7 +323,7 @@ describe("tool.task", () => {
             sessionID: chat.id,
             messageID: assistant.id,
             agent: "build",
-            abort: abort.signal,
+            channel: "test",            abort: abort.signal,
             extra: { promptOps },
             messages: [],
             metadata: () => Effect.void,
@@ -361,7 +361,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: { promptOps },
           messages: [],
           metadata: () => Effect.void,
@@ -399,7 +399,7 @@ describe("tool.task", () => {
             sessionID: chat.id,
             messageID: assistant.id,
             agent: "build",
-            abort: new AbortController().signal,
+            channel: "test",            abort: new AbortController().signal,
             extra: { promptOps },
             messages: [],
             metadata: () => Effect.void,
@@ -467,7 +467,7 @@ describe("tool.task", () => {
             sessionID: chat.id,
             messageID: assistant.id,
             agent: "build",
-            abort: new AbortController().signal,
+            channel: "test",            abort: new AbortController().signal,
             extra: { promptOps: stubOps() },
             messages: [],
             metadata: () => Effect.void,
@@ -498,7 +498,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: {
             promptOps: {
               ...stubOps(),
@@ -536,7 +536,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: { promptOps: stubOps({ text: "background done" }) },
           messages: [],
           metadata: () => Effect.void,
@@ -569,7 +569,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: {
             promptOps: {
               ...stubOps({ text: "background done" }),
@@ -608,7 +608,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: {
             promptOps: {
               ...stubOps(),
@@ -647,7 +647,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: {
             promptOps: {
               ...stubOps(),
@@ -686,7 +686,7 @@ describe("tool.task", () => {
           sessionID: chat.id,
           messageID: assistant.id,
           agent: "build",
-          abort: new AbortController().signal,
+            channel: "test",          abort: new AbortController().signal,
           extra: {
             promptOps: {
               ...stubOps(),

@@ -21,6 +21,9 @@ import {
   sanitizedProcessEnv,
 } from "@opencode-ai/core/util/opencode-process"
 import { validateSession } from "./validate-session"
+import { Database } from "bun:sqlite"
+import { xdgData } from "xdg-basedir"
+import { checkSchema } from "@opencode-ai/core/database/schema-check"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
@@ -143,6 +146,35 @@ export const TuiThreadCommand = cmd({
         [OPENCODE_RUN_ID]: ensureRunID(),
       })
 
+      // 在 Worker 启动前检查数据库表结构兼容性
+      if (!process.env.OPENCODE_SKIP_SCHEMA_CHECK) {
+        try {
+          const channel = process.env.OPENCODE_CHANNEL || "local"
+          const dbName = ["latest", "beta", "prod"].includes(channel) ? "opencode.db" : `opencode-${channel}.db`
+          const dataDir = path.join(xdgData!, "opencode")
+          const dbPath = path.join(dataDir, dbName)
+          const db = new Database(dbPath, { readonly: true })
+          const rows = db
+            .prepare(
+              `SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle_%'`,
+            )
+            .all() as { name: string; sql: string }[]
+          db.close()
+          const result = checkSchema(rows)
+          if (!result.compatible) {
+            console.error("")
+            console.error("  Database schema mismatch:")
+            for (const l of result.message.split("\n")) console.error("    " + l)
+            console.error("")
+            console.error("  Set OPENCODE_SKIP_SCHEMA_CHECK=1 to bypass.")
+            console.error("")
+            process.exit(1)
+          }
+        } catch {
+          // DB 还不存在（首次启动）或其它临时错误，跳过
+        }
+      }
+
       const worker = new Worker(file, {
         env,
       })
@@ -211,17 +243,18 @@ export const TuiThreadCommand = cmd({
             events: createEventSource(client),
           }
 
-      try {
-        await validateSession({
-          url: transport.url,
-          sessionID: args.session,
-          directory: cwd,
-          fetch: transport.fetch,
-        })
-      } catch (error) {
-        UI.error(errorMessage(error))
-        process.exitCode = 1
-        return
+      let sessionNotFound: string | undefined
+      if (args.session) {
+        try {
+          await validateSession({
+            url: transport.url,
+            sessionID: args.session,
+            directory: cwd,
+            fetch: transport.fetch,
+          })
+        } catch (error) {
+          sessionNotFound = errorMessage(error)
+        }
       }
 
       setTimeout(() => {
@@ -245,11 +278,13 @@ export const TuiThreadCommand = cmd({
           events: transport.events,
           args: {
             continue: args.continue,
-            sessionID: args.session,
+            sessionID: sessionNotFound ? undefined : args.session,
             agent: args.agent,
             model: args.model,
             prompt,
             fork: args.fork,
+            sessionNotFound,
+            pendingPrompt: sessionNotFound ? prompt : undefined,
           },
         })
         await handle.done

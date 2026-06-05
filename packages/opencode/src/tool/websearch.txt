@@ -1,14 +1,21 @@
-- Search the web using the session's web search provider - performs real-time web searches and can scrape content from specific URLs
-- Provides up-to-date information for current events and recent data
-- Supports configurable result counts and returns the content from the most relevant websites
-- Use this tool for accessing information beyond knowledge cutoff
-- Searches are performed automatically within a single API call
+- Search the web using the configured web search provider
+- Built-in DuckDuckGo search works without any API key or configuration
+- Also supports Exa and Parallel providers when API keys are configured
+- Provides up-to-date information for current events and recent data beyond your knowledge cutoff
+- Returns summarized content from the most relevant websites based on the query
+- Use this tool when you need real-time or recent information that may not be in your training data
 
 Usage notes:
-  - Supports live crawling modes when available: 'fallback' (backup if cached unavailable) or 'preferred' (prioritize live crawling)
+  - By default, uses DuckDuckGo (free, no API key required) — web search works out of the box
+  - To use Exa or Parallel, set the EXA_API_KEY or PARALLEL_API_KEY environment variable
+  - Override provider with OPENCODE_WEBSEARCH_PROVIDER env var (values: "duckduckgo", "exa", "parallel")
+  - Supports live crawling modes (parallel provider): 'fallback' (default, cached preferred) or 'preferred' (prioritize live)
   - Search types when available: 'auto' (balanced), 'fast' (quick results), 'deep' (comprehensive search)
-  - Configurable context length for optimal LLM integration
-  - Domain filtering and advanced search options available
+  - DuckDuckGo results include title, URL, and snippet for each result
+  - Configurable context length for optimal LLM integration (Exa/Parallel)
+  - Performs searches automatically within a single API call
 
 The current year is {{year}}. You MUST use this year when searching for recent information or current events
 - Example: If the current year is 2026 and the user asks for "latest AI news", search for "AI news 2026", NOT "AI news 2025"
+
+When websearch is unavailable, instruct the user to configure a web search provider, or use webfetch with direct URLs as a fallback.

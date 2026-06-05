@@ -57,9 +57,10 @@ export default tool({
     // 用 --prompt 直传递进消息，避免文件读写竞态
     const sessionId = ctx?.sessionID
     const prompt = args.message as string
+    const channel = ctx.channel
     const binArgs = sessionId
-      ? ["-s", sessionId, "--prompt", prompt]
-      : ["--prompt", prompt]
+      ? ["-s", sessionId, "--prompt", prompt, "--channel", channel]
+      : ["--prompt", prompt, "--channel", channel]
 
     const env = {
       ...process.env as Record<string, string>,

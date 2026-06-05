@@ -23,7 +23,7 @@ const ctx = {
   messageID: MessageID.make("msg_test"),
   callID: "",
   agent: "build",
-  abort: AbortSignal.any([]),
+            channel: "test",  abort: AbortSignal.any([]),
   messages: [],
   metadata: () => Effect.void,
   ask: () => Effect.void,

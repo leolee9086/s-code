@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import * as Tool from "./tool"
 import * as McpWebSearch from "./mcp-websearch"
+import * as DuckDuckGo from "./duckduckgo"
 import DESCRIPTION from "./websearch.txt"
 import { checksum } from "@opencode-ai/core/util/encode"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
@@ -24,21 +25,33 @@ export const Parameters = Schema.Struct({
   }),
 })
 
-const WebSearchProviderSchema = Schema.Literals(["exa", "parallel"])
+const WebSearchProviderSchema = Schema.Literals(["exa", "parallel", "duckduckgo"])
 export type WebSearchProvider = Schema.Schema.Type<typeof WebSearchProviderSchema>
+
+/** 检查提供商是否有实际可用的 API key */
+function providerAvailable(provider: WebSearchProvider): boolean {
+  if (provider === "parallel") return !!process.env.PARALLEL_API_KEY
+  if (provider === "exa") return !!process.env.EXA_API_KEY
+  if (provider === "duckduckgo") return true // DuckDuckGo 无需 API key，始终可用
+  return false
+}
 
 export function selectWebSearchProvider(sessionID: string, flags = { exa: false, parallel: false }): WebSearchProvider {
   const override = process.env.OPENCODE_WEBSEARCH_PROVIDER
-  if (override === "exa" || override === "parallel") return override
+  if (override === "exa" || override === "parallel" || override === "duckduckgo") return override
+
+  // 显式启用标志优先：即使没有 API key，也优先使用指定提供商（availability 由 providerAvailable 检查）
   if (flags.parallel) return "parallel"
   if (flags.exa) return "exa"
 
-  return Number.parseInt(checksum(sessionID) ?? "0", 36) % 2 === 0 ? "exa" : "parallel"
+  // 默认使用 DuckDuckGo（免费、零配置）
+  return "duckduckgo"
 }
 
 export function webSearchProviderLabel(provider: unknown) {
   if (provider === "parallel") return "Parallel Web Search"
   if (provider === "exa") return "Exa Web Search"
+  if (provider === "duckduckgo") return "DuckDuckGo Web Search"
   return "Web Search"
 }
 
@@ -57,12 +70,31 @@ function parallelAuthHeaders() {
   return { ...headers, Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` }
 }
 
+/** 格式化 DuckDuckGo 结果为统一文本 */
+function formatDuckDuckGoResults(results: DuckDuckGo.DuckDuckGoResult[], query: string): string {
+  if (results.length === 0) return ""
+
+  const lines = results.map(
+    (r, i) =>
+      `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet ?? ""}`,
+  )
+  return [`DuckDuckGo search results for "${query}":`, ...lines].join("\n\n")
+}
+
 function callProvider(
   http: HttpClient.HttpClient,
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
   ctx: Tool.Context,
 ) {
+  if (provider === "duckduckgo") {
+    return Effect.gen(function* () {
+      const results = yield* DuckDuckGo.search(http, params.query, params.numResults || 8)
+      if (results.length === 0) return undefined
+      return formatDuckDuckGoResults(results, params.query)
+    })
+  }
+
   if (provider === "parallel") {
     return McpWebSearch.call(
       http,
@@ -130,12 +162,27 @@ export const WebSearchTool = Tool.define(
             },
           })
 
+          // 验证提供商是否真的可用（DuckDuckGo 始终可用，无需 key）
+          if (!providerAvailable(provider)) {
+            const hint = provider === "exa"
+              ? "EXA_API_KEY environment variable is not set."
+              : "PARALLEL_API_KEY environment variable is not set."
+            return {
+              output: `Web search (${provider}) is not available: ${hint} `
+                + "Configure it in your environment, or switch to the built-in "
+                + "DuckDuckGo search which works without any API key. "
+                + "As a fallback, use the webfetch tool to fetch specific URLs directly.",
+              title: "Web Search Unavailable",
+              metadata: { provider, available: false },
+            }
+          }
+
           const result = yield* callProvider(http, provider, params, ctx)
 
           return {
             output: result ?? "No search results found. Please try a different query.",
             title: `${title}: ${params.query}`,
-            metadata: { provider },
+            metadata: { provider, available: true },
           }
         }).pipe(Effect.orDie),
     }

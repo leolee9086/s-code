@@ -4,13 +4,10 @@
   "permission": {
     "build_opencode": "ask",
     "build_and_deploy_opencode": "ask",
+    "websearch": "allow",
   },
   "reference": {
     "effect": "github.com/Effect-TS/effect-smol",
   },
   "mcp": {},
-  "tools": {
-    "github-triage": false,
-    "github-pr-search": false,
-  },
 }

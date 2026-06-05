@@ -32,6 +32,7 @@ import { Config } from "@/config/config"
 import { ConfigMarkdown } from "@/config/markdown"
 import { PrefixCommand } from "@/prefix-command"
 import { PhraseBan } from "@/content-filter/phrase-ban"
+import { getDatabaseChannel } from "@opencode-ai/core/installation/version"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { SessionProcessor } from "./processor"
@@ -377,6 +378,7 @@ export const layer = Layer.effect(
       const result = yield* taskTool
         .execute(taskArgs, {
           agent: task.agent,
+          channel: getDatabaseChannel(),
           messageID: assistantMessage.id,
           sessionID,
           abort: taskAbort.signal,
@@ -887,6 +889,7 @@ export const layer = Layer.effect(
                 return read
                   .execute(args, {
                     sessionID: input.sessionID,
+                    channel: getDatabaseChannel(),
                     abort: controller.signal,
                     agent: input.agent!,
                     messageID: info.id,

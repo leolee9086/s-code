@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { EffectDrizzleSqlite } from "@opencode-ai/effect-drizzle-sqlite"
 import { migrations } from "./migration.gen"
+export { migrations }
+import { checkSchema, type SchemaCheckResult } from "./schema-check"
 
 type Database = EffectDrizzleSqlite.EffectSQLiteDatabase
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0]
@@ -54,5 +56,23 @@ export function applyOnly(db: Database, input: Migration[]) {
         }),
       )
     }
+  })
+}
+
+/**
+ * Effect 版 schema 校验——供 Worker 内 Effect 运行时使用。
+ * 查询 sqlite_master 获取当前所有表的 DDL，与 Drizzle 表定义对比。
+ */
+export function checkSchemaVersion(
+  db: Database,
+  _input: Migration[],
+): Effect.Effect<SchemaCheckResult> {
+  return Effect.gen(function* () {
+    const rows = yield* db
+      .all<{ name: string; sql: string }>(
+        sql`SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle_%'`,
+      )
+      .pipe(Effect.orDie)
+    return checkSchema(rows)
   })
 }

@@ -14,6 +14,7 @@ export type ToolContext = {
    * Useful for generating stable relative paths (e.g. path.relative(worktree, absPath)).
    */
   worktree: string
+  channel: string
   abort: AbortSignal
   metadata(input: { title?: string; metadata?: { [key: string]: any } }): void
   ask(input: AskInput): Promise<void>

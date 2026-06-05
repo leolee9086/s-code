@@ -56,8 +56,9 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 
 const log = Log.create({ service: "tool.registry" })
 
-export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
-  return providerID === ProviderV2.ID.opencode || flags.exa || flags.parallel
+export function webSearchEnabled(providerID: ProviderV2.ID, _flags = { exa: false, parallel: false }): boolean {
+  // 始终启用：内置 DuckDuckGo 搜索无需 API key
+  return true
 }
 
 type TaskDef = Tool.InferDef<typeof TaskTool>

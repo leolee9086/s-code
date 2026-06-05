@@ -500,6 +500,17 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
   })
 
+  // session 未找到时，弹出 session 选择列表并显示警告
+  createEffect(() => {
+    if (!args.sessionNotFound) return
+    toast.show({
+      variant: "warning",
+      message: `未找到 session: ${args.sessionNotFound}。二进制 channel 可能不对，sessionID 可能错误。`,
+      duration: 6000,
+    })
+    dialog.replace(() => <DialogSessionList />)
+  })
+
   let continued = false
   createEffect(() => {
     // When using -c, session list is loaded in blocking phase, so we can navigate at "partial"

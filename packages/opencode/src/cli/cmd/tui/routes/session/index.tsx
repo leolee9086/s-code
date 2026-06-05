@@ -92,6 +92,8 @@ import { getRevertDiffFiles } from "../../util/revert-diff"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
 import { isEvolveMode, readEvolveMessage } from "@/evolve/file-protocol"
+import { useArgs } from "@tui/context/args"
+import { MessageID, PartID } from "@/session/schema"
 
 addDefaultParsers(parsers.parsers)
 
@@ -229,6 +231,8 @@ export function Session() {
   const showThinking = createMemo(() => true)
   const [timestamps, setTimestamps] = kv.signal<"hide" | "show">("timestamps", "hide")
   const [showDetails, setShowDetails] = kv.signal("tool_details_visibility", true)
+  const [pendingSubmitted, setPendingSubmitted] = createSignal(false)
+  const args = useArgs()
   const [showAssistantMetadata, _setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
@@ -292,6 +296,20 @@ export function Session() {
             await new Promise(r => setTimeout(r, 2000))
           }
         }
+      }
+
+      // pendingPrompt：session 未找到时缓存的 prompt，用户选择 session 后自动提交
+      const pending = args.pendingPrompt
+      if (pending && !pendingSubmitted()) {
+        setPendingSubmitted(true)
+        const msgID = MessageID.ascending()
+        sdk.client.session.prompt({
+          sessionID,
+          messageID: msgID,
+          agent: args.agent ?? undefined,
+          model: args.model ? { providerID: args.model.split("/")[0]!, modelID: args.model.split("/")[1]! } : undefined,
+          parts: [{ id: PartID.ascending(), type: "text" as const, text: pending }],
+        }).catch(() => {})
       }
 
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)

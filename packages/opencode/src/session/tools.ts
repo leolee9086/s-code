@@ -1,6 +1,7 @@
 import { Agent } from "@/agent/agent"
 import { SessionLegacy } from "@opencode-ai/core/session/legacy"
 import { Provider } from "@/provider/provider"
+import { getDatabaseChannel } from "@opencode-ai/core/installation/version"
 import { ProviderTransform } from "@/provider/transform"
 import { MCP } from "@/mcp"
 import { Permission } from "@/permission"
@@ -41,11 +42,13 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
 
+  const channel = getDatabaseChannel()
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
     abort: options.abortSignal!,
     messageID: input.processor.message.id,
     callID: options.toolCallId,
+    channel,
     extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck, promptOps: input.promptOps },
     agent: input.agent.name,
     messages: input.messages,

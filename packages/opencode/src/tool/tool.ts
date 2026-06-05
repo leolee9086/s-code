@@ -39,6 +39,7 @@ export type Context<M extends Metadata = Metadata> = {
   agent: string
   abort: AbortSignal
   callID?: string
+  channel: string
   extra?: { [key: string]: unknown }
   messages: SessionLegacy.WithParts[]
   metadata(input: { title?: string; metadata?: M }): Effect.Effect<void>

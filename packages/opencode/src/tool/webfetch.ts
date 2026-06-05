@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Duration, Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { Parser } from "htmlparser2"
 import * as Tool from "./tool"
@@ -9,6 +9,34 @@ import { isImageAttachment } from "@/util/media"
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
 const DEFAULT_TIMEOUT = 30 * 1000 // 30 seconds
 const MAX_TIMEOUT = 120 * 1000 // 2 minutes
+const MAX_RETRIES = 3 // 最大重试次数
+
+// 内存缓存：key = "format:url"，TTL 60 秒，避免同一 session 内重复抓取相同 URL
+const CACHE_TTL = Duration.seconds(60)
+const fetchCache = new Map<string, { data: string; mime: string; expires: number }>()
+
+function cacheKey(format: string, url: string) {
+  return `${format}:${url}`
+}
+
+function getFromCache(key: string): { data: string; mime: string } | undefined {
+  const entry = fetchCache.get(key)
+  if (!entry) return undefined
+  if (Date.now() > entry.expires) {
+    fetchCache.delete(key)
+    return undefined
+  }
+  return { data: entry.data, mime: entry.mime }
+}
+
+function setCache(key: string, data: string, mime: string) {
+  fetchCache.set(key, { data, mime, expires: Date.now() + Duration.toMillis(CACHE_TTL) })
+  // 限制缓存大小，避免内存泄漏
+  if (fetchCache.size > 200) {
+    const oldest = fetchCache.keys().next().value
+    if (oldest) fetchCache.delete(oldest)
+  }
+}
 
 export const Parameters = Schema.Struct({
   url: Schema.String.annotate({ description: "The URL to fetch content from" }),
@@ -48,6 +76,14 @@ export const WebFetchTool = Tool.define(
           })
 
           const timeout = Math.min((params.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000, MAX_TIMEOUT)
+
+          // 检查缓存
+          const ck = cacheKey(params.format, params.url)
+          const cached = getFromCache(ck)
+          if (cached) {
+            yield* ctx.metadata({ title: `WebFetch ${params.url} (cached)`, metadata: { cached: true } })
+            return { output: cached.data, title: `${params.url} (cached)`, metadata: {} }
+          }
 
           // Build Accept header based on requested format with q parameters for fallbacks
           let acceptHeader = "*/*"
@@ -89,18 +125,21 @@ export const WebFetchTool = Tool.define(
                   ),
                 ),
             ),
-            Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.die(new Error("Request timed out")) }),
+            Effect.timeoutOrElse({
+              duration: timeout,
+              orElse: () => Effect.die(new Error(`WebFetch timed out after ${timeout / 1000}s: ${params.url}`)),
+            }),
           )
 
           // Check content length
           const contentLength = response.headers["content-length"]
           if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
+            throw new Error(`Response too large (exceeds 5MB limit): ${params.url}`)
           }
 
           const arrayBuffer = yield* response.arrayBuffer
           if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
+            throw new Error(`Response too large (exceeds 5MB limit): ${params.url}`)
           }
 
           const contentType = response.headers["content-type"] || ""
@@ -126,57 +165,87 @@ export const WebFetchTool = Tool.define(
           const content = new TextDecoder().decode(arrayBuffer)
 
           // Handle content based on requested format and actual content type
+          let output: string
           switch (params.format) {
             case "markdown":
               if (contentType.includes("text/html")) {
-                const markdown = convertHTMLToMarkdown(content)
-                return {
-                  output: markdown,
-                  title,
-                  metadata: {},
-                }
+                output = convertHTMLToMarkdown(content)
+              } else {
+                output = content
               }
-              return { output: content, title, metadata: {} }
+              break
 
             case "text":
               if (contentType.includes("text/html")) {
-                return { output: extractTextFromHTML(content), title, metadata: {} }
+                output = extractTextFromHTML(content)
+              } else {
+                output = content
               }
-              return { output: content, title, metadata: {} }
+              break
 
             case "html":
-              return { output: content, title, metadata: {} }
+              output = content
+              break
 
             default:
-              return { output: content, title, metadata: {} }
+              output = content
           }
+
+          // 写入缓存
+          setCache(ck, output, mime)
+
+          return { output, title, metadata: {} }
         }).pipe(Effect.orDie),
     }
   }),
 )
 
+/** 从 HTML 中提取纯文本，跳过脚本/样式并合并空白 */
 function extractTextFromHTML(html: string) {
   let text = ""
   let skipDepth = 0
+  let lastWasNewline = false
 
   const parser = new Parser({
     onopentag(name) {
-      if (skipDepth > 0 || ["script", "style", "noscript", "iframe", "object", "embed"].includes(name)) {
+      if (skipDepth > 0 || ["script", "style", "noscript", "iframe", "object", "embed", "nav", "footer"].includes(name)) {
         skipDepth++
+      }
+      // 块级元素前加换行
+      if (skipDepth === 0 && ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr", "blockquote", "br"].includes(name)) {
+        if (!lastWasNewline) text += "\n"
       }
     },
     ontext(input) {
-      if (skipDepth === 0) text += input
+      if (skipDepth === 0) {
+        const trimmed = input.replace(/\s+/g, " ").trim()
+        if (trimmed) {
+          if (!lastWasNewline && text && !text.endsWith("\n") && !text.endsWith(" ")) text += " "
+          text += trimmed
+          lastWasNewline = false
+        }
+      }
     },
-    onclosetag() {
-      if (skipDepth > 0) skipDepth--
+    onclosetag(name) {
+      if (skipDepth > 0) {
+        if (["script", "style", "noscript", "iframe", "object", "embed", "nav", "footer"].includes(name)) {
+          skipDepth--
+        }
+        return
+      }
+      // 块级关闭后加换行
+      if (["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr", "blockquote"].includes(name)) {
+        if (!lastWasNewline) text += "\n"
+        lastWasNewline = true
+      }
     },
   })
 
   parser.write(html)
   parser.end()
 
-  return text.trim()
+  // 合并连续空行
+  return text.replace(/\n{3,}/g, "\n\n").trim()
 }
 
 function convertHTMLToMarkdown(html: string): string {
@@ -186,7 +255,16 @@ function convertHTMLToMarkdown(html: string): string {
     bulletListMarker: "-",
     codeBlockStyle: "fenced",
     emDelimiter: "*",
+    linkStyle: "inlined",
+    linkReferenceStyle: "full",
   })
-  turndownService.remove(["script", "style", "meta", "link"])
+  turndownService.remove(["script", "style", "meta", "link", "nav", "footer"])
+  // 给表格前后补充空行确保 markdown 渲染正确
+  turndownService.addRule("tableSpacing", {
+    filter: "table",
+    replacement(content) {
+      return `\n\n${content}\n\n`
+    },
+  })
   return turndownService.turndown(html)
 }

@@ -37,9 +37,24 @@ describe("websearch provider", () => {
     expect(selectWebSearchProvider(SESSION_ID, { exa: false, parallel: true })).toBe("parallel")
   })
 
-  test("is only enabled for opencode or explicit websearch provider flags", () => {
+  test("defaults to DuckDuckGo when no flags are set", () => {
+    expect(selectWebSearchProvider(SESSION_ID, { exa: false, parallel: false })).toBe("duckduckgo")
+  })
+
+  test("accepts DuckDuckGo as an operational override", () => {
+    const original = process.env.OPENCODE_WEBSEARCH_PROVIDER
+    try {
+      process.env.OPENCODE_WEBSEARCH_PROVIDER = "duckduckgo"
+      expect(selectWebSearchProvider(SESSION_ID, { exa: true, parallel: true })).toBe("duckduckgo")
+    } finally {
+      if (original === undefined) delete process.env.OPENCODE_WEBSEARCH_PROVIDER
+      else process.env.OPENCODE_WEBSEARCH_PROVIDER = original
+    }
+  })
+
+  test("is always enabled (built-in DuckDuckGo works without API keys)", () => {
     expect(webSearchEnabled(ProviderV2.ID.opencode, { exa: false, parallel: false })).toBe(true)
-    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: false })).toBe(false)
+    expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: false })).toBe(true)
     expect(webSearchEnabled(ProviderV2.ID.openai, { exa: true, parallel: false })).toBe(true)
     expect(webSearchEnabled(ProviderV2.ID.openai, { exa: false, parallel: true })).toBe(true)
   })
@@ -47,6 +62,7 @@ describe("websearch provider", () => {
   test("uses branded labels", () => {
     expect(webSearchProviderLabel("parallel")).toBe("Parallel Web Search")
     expect(webSearchProviderLabel("exa")).toBe("Exa Web Search")
+    expect(webSearchProviderLabel("duckduckgo")).toBe("DuckDuckGo Web Search")
     expect(webSearchProviderLabel(undefined)).toBe("Web Search")
   })
 

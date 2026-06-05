@@ -7,7 +7,7 @@ import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { isAbsolute, join } from "path"
 import { DatabaseMigration } from "./migration"
-import { InstallationChannel } from "../installation/version"
+import { getDatabaseChannel } from "../installation/version"
 
 const makeDatabase = EffectDrizzleSqlite.makeWithDefaults()
 type DatabaseShape = Effect.Success<typeof makeDatabase>
@@ -31,6 +31,15 @@ export const layer = Layer.effect(
     yield* db.run("PRAGMA wal_checkpoint(PASSIVE)")
     yield* DatabaseMigration.apply(db)
 
+    {
+      const schemaCheck = process.env.OPENCODE_SKIP_SCHEMA_CHECK === "1"
+        ? { compatible: true as const }
+        : yield* DatabaseMigration.checkSchemaVersion(db, DatabaseMigration.migrations)
+      if (!schemaCheck.compatible) {
+        yield* Effect.die(new Error(schemaCheck.message))
+      }
+    }
+
     return { db }
   }).pipe(Effect.orDie),
 )
@@ -44,13 +53,14 @@ export function path() {
     if (Flag.OPENCODE_DB === ":memory:" || isAbsolute(Flag.OPENCODE_DB)) return Flag.OPENCODE_DB
     return join(Global.Path.data, Flag.OPENCODE_DB)
   }
+  const effective = getDatabaseChannel()
   if (
-    ["latest", "beta", "prod"].includes(InstallationChannel) ||
+    ["latest", "beta", "prod"].includes(effective) ||
     process.env.OPENCODE_DISABLE_CHANNEL_DB === "1" ||
     process.env.OPENCODE_DISABLE_CHANNEL_DB === "true"
   )
     return join(Global.Path.data, "opencode.db")
-  return join(Global.Path.data, `opencode-${InstallationChannel.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`)
+  return join(Global.Path.data, `opencode-${effective.replace(/[^a-zA-Z0-9._-]/g, "-")}.db`)
 }
 
 export const defaultLayer = Layer.unwrap(

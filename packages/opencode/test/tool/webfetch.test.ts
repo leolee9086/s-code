@@ -15,7 +15,7 @@ const ctx = {
   messageID: MessageID.make("msg_message"),
   callID: "",
   agent: "build",
-  abort: AbortSignal.any([]),
+            channel: "test",  abort: AbortSignal.any([]),
   messages: [],
   metadata: () => Effect.void,
   ask: () => Effect.void,
@@ -109,5 +109,38 @@ describe("tool.webfetch", () => {
           expect(result.attachments).toBeUndefined()
         }),
     ),
+  )
+
+  it.instance("caches fetched content within the same session", () =>
+    Effect.gen(function* () {
+      let requestCount = 0
+      const body = "Content from server"
+      yield* withFetch(
+        () => {
+          requestCount++
+          return new Response(body, {
+            status: 200,
+            headers: { "content-type": "text/plain; charset=utf-8" },
+          })
+        },
+        (url) =>
+          Effect.gen(function* () {
+            // 第一次请求——应到达服务器
+            const result1 = yield* exec({ url: new URL("/cached.txt", url).toString(), format: "text" })
+            expect(result1.output).toBe(body)
+            expect(requestCount).toBe(1)
+
+            // 第二次请求（相同 URL 和 format）——应命中缓存
+            const result2 = yield* exec({ url: new URL("/cached.txt", url).toString(), format: "text" })
+            expect(result2.output).toBe(body)
+            expect(requestCount).toBe(1) // 服务器仅被调用一次
+
+            // 不同 format 不应命中缓存
+            const result3 = yield* exec({ url: new URL("/cached.txt", url).toString(), format: "markdown" })
+            expect(result3.output).toBe(body)
+            expect(requestCount).toBe(2) // 新的服务器请求
+          }),
+      )
+    }),
   )
 })

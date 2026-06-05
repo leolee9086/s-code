@@ -218,7 +218,16 @@ export function DialogSessionList() {
       })
       .filter((x) => x !== undefined)
 
-    return [...pinned.map((id) => buildOption(id, "Pinned")).filter((x) => x !== undefined), ...remaining]
+    const newSessionOption: Exclude<ReturnType<typeof buildOption>, undefined> = {
+      title: "✦ New Session",
+      value: "__new__",
+      category: "Actions",
+      gutter: undefined,
+      bg: undefined,
+      footer: "",
+    }
+
+    return [newSessionOption, ...pinned.map((id) => buildOption(id, "Pinned")).filter((x) => x !== undefined), ...remaining]
   })
 
   onMount(() => {
@@ -235,7 +244,21 @@ export function DialogSessionList() {
       onMove={() => {
         setToDelete(undefined)
       }}
-      onSelect={(option) => {
+      onSelect={async (option) => {
+        if (option.value === "__new__") {
+          const agent = local.agent.current()
+          if (!agent) return
+          const selectedModel = local.model.current()
+          if (!selectedModel) return
+          const res = await sdk.client.session.create({
+            agent: agent.name,
+            model: { providerID: selectedModel.providerID, id: selectedModel.modelID },
+          })
+          if (res.error) return
+          route.navigate({ type: "session", sessionID: res.data.id })
+          dialog.clear()
+          return
+        }
         route.navigate({
           type: "session",
           sessionID: option.value,

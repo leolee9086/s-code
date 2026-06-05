@@ -416,7 +416,7 @@ describe("tool.registry", () => {
         messageID: MessageID.make("msg_test"),
         agent: (yield* agents.defaultInfo()).name,
         abort: new AbortController().signal,
-        messages: [],
+            channel: "test",        messages: [],
         metadata: () => Effect.void,
         ask: () => Effect.void,
       } satisfies Tool.Context)

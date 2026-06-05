@@ -10,6 +10,7 @@ import type { MessageV2 } from "../../../session/message-v2"
 import { MessageID, PartID } from "../../../session/schema"
 import { ToolRegistry } from "@/tool/registry"
 import { Permission } from "../../../permission"
+import { getDatabaseChannel } from "@opencode-ai/core/installation/version"
 import { iife } from "../../../util/iife"
 import { effectCmd, fail } from "../../effect-cmd"
 import { InstanceRef } from "@/effect/instance-ref"
@@ -188,6 +189,7 @@ const createToolContext = Effect.fn("Cli.debug.agent.createToolContext")(functio
 
   return {
     sessionID: session.id,
+    channel: getDatabaseChannel(),
     messageID,
     callID: PartID.ascending(),
     agent: agent.name,

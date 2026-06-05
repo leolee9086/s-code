@@ -15,6 +15,7 @@ function makeCtx(): Tool.Context {
     sessionID: SessionID.descending(),
     messageID: MessageID.ascending(),
     agent: "build",
+    channel: "test",
     abort: new AbortController().signal,
     messages: [],
     metadata() {

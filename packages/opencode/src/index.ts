@@ -87,6 +87,10 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
+  .option("channel", {
+    describe: "database channel (e.g. local, dev, latest); overrides the compiled channel",
+    type: "string",
+  })
   .middleware(async (opts) => {
     if (opts.pure) {
       process.env.OPENCODE_PURE = "1"
@@ -107,6 +111,7 @@ const cli = yargs(args)
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
     process.env.OPENCODE_PID = String(process.pid)
+    if (opts.channel) process.env.OPENCODE_CHANNEL = opts.channel
 
     Log.Default.info("opencode", {
       version: InstallationVersion,

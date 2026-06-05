@@ -7,6 +7,8 @@ export interface Args {
   continue?: boolean
   sessionID?: string
   fork?: boolean
+  sessionNotFound?: string
+  pendingPrompt?: string
 }
 
 export const { use: useArgs, provider: ArgsProvider } = createSimpleContext({
