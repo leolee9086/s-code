@@ -27,16 +27,23 @@ await Log.init({
 
 Heap.start()
 
+function formatErrorStack(e: unknown): { message: string; stack?: string; cause?: ReturnType<typeof formatErrorStack> } {
+  if (e instanceof Error) {
+    return {
+      message: e.message,
+      stack: e.stack?.split("\n").slice(0, 20).join("\n"),
+      ...(e.cause ? { cause: formatErrorStack(e.cause) } : {}),
+    }
+  }
+  return { message: String(e) }
+}
+
 process.on("unhandledRejection", (e) => {
-  Log.Default.error("rejection", {
-    e: e instanceof Error ? e.message : e,
-  })
+  Log.Default.error("rejection", formatErrorStack(e))
 })
 
 process.on("uncaughtException", (e) => {
-  Log.Default.error("exception", {
-    e: e instanceof Error ? e.message : e,
-  })
+  Log.Default.error("exception", formatErrorStack(e))
 })
 
 // Subscribe to global events and forward them via RPC

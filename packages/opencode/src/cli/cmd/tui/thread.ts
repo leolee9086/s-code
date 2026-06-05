@@ -189,8 +189,18 @@ export const TuiThreadCommand = cmd({
       }
 
       const client = Rpc.client<typeof rpc>(worker)
+      function formatError(e: unknown): Record<string, unknown> {
+        if (e instanceof Error) {
+          return {
+            message: e.message,
+            stack: e.stack?.split("\n").slice(0, 20).join("\n"),
+            ...(e.cause ? { cause: formatError(e.cause) } : {}),
+          }
+        }
+        return { error: errorMessage(e) }
+      }
       const error = (e: unknown) => {
-        Log.Default.error("process error", { error: errorMessage(e) })
+        Log.Default.error("process error", formatError(e))
       }
       const reload = () => {
         client.call("reload", undefined).catch((err) => {

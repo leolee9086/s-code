@@ -77,6 +77,31 @@ import { makeLibRs } from "./engines/lib-rs"
 import { makeFDroid } from "./engines/fdroid"
 import { makeMastodon } from "./engines/mastodon"
 import { makeCurrencyConvert } from "./engines/currency-convert"
+import { makeArtStation } from "./engines/artstation"
+import { makeWikidata } from "./engines/wikidata"
+import { makeWikimediaCommons } from "./engines/wikicommons"
+import { makeMetacpan } from "./engines/metacpan"
+import { makeArchLinux } from "./engines/archlinux"
+import { makeAlpineLinux } from "./engines/alpinelinux"
+import { makeVoidLinux } from "./engines/voidlinux"
+import { make500px } from "./engines/500px"
+import { makeFreesound } from "./engines/freesound"
+import { makeSpotify } from "./engines/spotify"
+import { makeOpenMeteo } from "./engines/open-meteo"
+import { makeLemmy } from "./engines/lemmy"
+import { makeStartpage } from "./engines/startpage"
+import { makeChinaso } from "./engines/chinaso"
+import { makePiped } from "./engines/piped"
+import { makeInvidious } from "./engines/invidious"
+import { makeDiscourse } from "./engines/discourse"
+import { makeQuark } from "./engines/quark"
+import { makeOdysee } from "./engines/odysee"
+import { makeBoardreader } from "./engines/boardreader"
+import { makeMwmbl } from "./engines/mwmbl"
+import { makeSeznam } from "./engines/seznam"
+import { makeAol } from "./engines/aol"
+import { makeGmx } from "./engines/gmx"
+import { makeYep } from "./engines/yep"
 
 
 /**
@@ -175,6 +200,78 @@ export function selectEngines(
     })))
   }
 
+  // Startpage — Google 隐私代理，无需 key
+  if (!flags) {
+    engines.push(makeStartpage(makeEngineConfig({
+      name: "startpage",
+      weight: 1.1,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 8,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // Mwmbl — 开源社区搜索引擎，无需 key
+  if (!flags) {
+    engines.push(makeMwmbl(makeEngineConfig({
+      name: "mwmbl",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Seznam — 捷克搜索引擎
+  if (!flags) {
+    engines.push(makeSeznam(makeEngineConfig({
+      name: "seznam",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // AOL — 美国老牌搜索引擎（代理 Bing 结果）
+  if (!flags) {
+    engines.push(makeAol(makeEngineConfig({
+      name: "aol",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // GMX — 德国搜索引擎（代理 Bing 结果）
+  if (!flags) {
+    engines.push(makeGmx(makeEngineConfig({
+      name: "gmx",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Yep — AI 驱动的搜索引擎
+  if (!flags) {
+    engines.push(makeYep(makeEngineConfig({
+      name: "yep",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // ── 站点限定搜索引擎（通过 DDG/Bing site: 语法） ──────────
   // 这些引擎不直接请求目标站点，零风险，仅依赖搜索引擎索引
 
@@ -238,6 +335,42 @@ export function selectEngines(
     })))
   }
 
+  // Piped — YouTube 隐私友好前端（多实例）
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makePiped(makeEngineConfig({
+      name: "piped",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // Invidious — YouTube 隐私友好前端（多实例）
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeInvidious(makeEngineConfig({
+      name: "invidious",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Odysee — 去中心化视频平台
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeOdysee(makeEngineConfig({
+      name: "odysee",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // 搜狗微信 — 微信公众号文章搜索
   if (!flags || flags?.queryType === "news" || flags?.queryType === "social") {
     engines.push(makeSogouWeChat(makeEngineConfig({
@@ -259,6 +392,30 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 8,
       priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // ChinaSo — 中文综合搜索
+  if (!flags || flags?.lang?.startsWith("zh")) {
+    engines.push(makeChinaso(makeEngineConfig({
+      name: "chinaso",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Quark — 夸克中文搜索（阿里旗下）
+  if (!flags || flags?.lang?.startsWith("zh")) {
+    engines.push(makeQuark(makeEngineConfig({
+      name: "quark",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
       requiresKey: false,
     })))
   }
@@ -965,6 +1122,174 @@ export function selectEngines(
       name: "currency-convert",
       weight: 0.7,
       timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 艺术作品搜索：ArtStation
+  if (!flags) {
+    engines.push(makeArtStation(makeEngineConfig({
+      name: "artstation",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 知识图谱搜索：Wikidata
+  if (!flags || flags?.queryType === "academic") {
+    engines.push(makeWikidata(makeEngineConfig({
+      name: "wikidata",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 媒体文件搜索：Wikimedia Commons
+  if (!flags) {
+    engines.push(makeWikimediaCommons(makeEngineConfig({
+      name: "wikicommons",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Perl 包搜索：MetaCPAN
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makeMetacpan(makeEngineConfig({
+      name: "metacpan",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Arch Linux 包搜索：archlinux
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makeArchLinux(makeEngineConfig({
+      name: "archlinux",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Alpine Linux 包搜索：alpinelinux
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makeAlpineLinux(makeEngineConfig({
+      name: "alpinelinux",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Void Linux 包搜索：voidlinux
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makeVoidLinux(makeEngineConfig({
+      name: "voidlinux",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 摄影作品搜索：500px
+  if (!flags || flags?.queryType === "video") {
+    engines.push(make500px(makeEngineConfig({
+      name: "500px",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 音频样本搜索：Freesound
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeFreesound(makeEngineConfig({
+      name: "freesound",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 音乐搜索：Spotify（需要 SPOTIFY_ACCESS_TOKEN 环境变量）
+  if (flags?.queryType === "social" || (!flags && !!process.env.SPOTIFY_ACCESS_TOKEN)) {
+    engines.push(makeSpotify(makeEngineConfig({
+      name: "spotify",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: true,
+    })))
+  }
+
+  // 天气搜索：Open-Meteo（免费，无需 key）
+  if (!flags) {
+    engines.push(makeOpenMeteo(makeEngineConfig({
+      name: "open-meteo",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 3,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 社交搜索：Lemmy（去中心化 Reddit 替代）
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeLemmy(makeEngineConfig({
+      name: "lemmy",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 论坛搜索：Discourse（多实例）
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeDiscourse(makeEngineConfig({
+      name: "discourse",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 论坛搜索：Boardreader（聚合多个论坛）
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeBoardreader(makeEngineConfig({
+      name: "boardreader",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(20)),
       maxResults: 5,
       priority: 0,
       requiresKey: false,
