@@ -65,6 +65,18 @@ import { makeBandcamp } from "./engines/bandcamp"
 import { makeGenius } from "./engines/genius"
 import { makeImgur } from "./engines/imgur"
 import { makeRumble } from "./engines/rumble"
+import { makePkgGoDev } from "./engines/pkg-go-dev"
+import { makePeerTube } from "./engines/peertube"
+import { makePixiv } from "./engines/pixiv"
+import { makeDeezer } from "./engines/deezer"
+import { makeReuters } from "./engines/reuters"
+import { makeWttr } from "./engines/wttr"
+import { makeYahooNews } from "./engines/yahoo-news"
+import { makeMixcloud } from "./engines/mixcloud"
+import { makeLibRs } from "./engines/lib-rs"
+import { makeFDroid } from "./engines/fdroid"
+import { makeMastodon } from "./engines/mastodon"
+import { makeCurrencyConvert } from "./engines/currency-convert"
 
 
 /**
@@ -807,6 +819,150 @@ export function selectEngines(
   if (!flags || flags?.queryType === "video") {
     engines.push(makeRumble(makeEngineConfig({
       name: "rumble",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Go 包搜索：pkg.go.dev
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makePkgGoDev(makeEngineConfig({
+      name: "pkg-go-dev",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 去中心化视频搜索：PeerTube
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makePeerTube(makeEngineConfig({
+      name: "peertube",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 插画搜索：Pixiv
+  if (!flags) {
+    engines.push(makePixiv(makeEngineConfig({
+      name: "pixiv",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 音乐搜索：Deezer
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeDeezer(makeEngineConfig({
+      name: "deezer",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 新闻搜索：Reuters
+  if (!flags || flags?.queryType === "news") {
+    engines.push(makeReuters(makeEngineConfig({
+      name: "reuters",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 天气搜索：wttr.in
+  if (!flags) {
+    engines.push(makeWttr(makeEngineConfig({
+      name: "wttr",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 3,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 新闻搜索：Yahoo News
+  if (!flags || flags?.queryType === "news") {
+    engines.push(makeYahooNews(makeEngineConfig({
+      name: "yahoo-news",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 音乐搜索：Mixcloud
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeMixcloud(makeEngineConfig({
+      name: "mixcloud",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Rust 文档搜索：lib.rs
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makeLibRs(makeEngineConfig({
+      name: "lib-rs",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Android 应用搜索：F-Droid
+  if (!flags) {
+    engines.push(makeFDroid(makeEngineConfig({
+      name: "fdroid",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 社交搜索：Mastodon
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeMastodon(makeEngineConfig({
+      name: "mastodon",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 货币转换搜索：currency-convert
+  if (!flags) {
+    engines.push(makeCurrencyConvert(makeEngineConfig({
+      name: "currency-convert",
       weight: 0.7,
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,

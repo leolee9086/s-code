@@ -258,9 +258,12 @@ export const TuiThreadCommand = cmd({
             events: createEventSource(client),
           }
 
+      // 等待 Worker 就绪后验证 session。Worker 的 Rpc.listen(rpc) 在
+      // await Log.init() 之后才调用，在此之前 Worker 不处理 RPC 消息。
       let sessionNotFound: string | undefined
       if (args.session) {
         try {
+          await withTimeout(client.call("ready", undefined), 30000)
           await validateSession({
             url: transport.url,
             sessionID: args.session,

@@ -47,6 +47,12 @@ GlobalBus.on("event", (event) => {
 let server: Awaited<ReturnType<typeof Server.listen>> | undefined
 
 export const rpc = {
+  ready() {
+    // Rpc.listen(rpc) 之后立即调用。主线程 await client.call("ready")
+    // 确保 Worker 已完成初始化（Log.init、Heap.start、GlobalBus.setup），
+    // 之后 validateSession 的 RPC bridge fetch 才能正确响应。
+    return "ok" as const
+  },
   async fetch(input: { url: string; method: string; headers: Record<string, string>; body?: string }) {
     const headers = { ...input.headers }
     const auth = ServerAuth.header()
