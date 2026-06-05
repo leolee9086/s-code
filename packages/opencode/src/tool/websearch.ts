@@ -22,6 +22,12 @@ export const Parameters = Schema.Struct({
   contextMaxCharacters: Schema.optional(Schema.Number).annotate({
     description: "为 LLM 优化的上下文字符数上限（默认 10000）",
   }),
+  timeRange: Schema.optional(Schema.Literals(["day", "week", "month", "year"])).annotate({
+    description: "时间范围过滤：'day'（一天内）、'week'（一周内）、'month'（一月内）、'year'（一年内）",
+  }),
+  lang: Schema.optional(Schema.String).annotate({
+    description: "语言偏好（如 'zh-CN'、'en'、'ja'），用于获取特定语言的结果",
+  }),
 })
 
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel", "duckduckgo"])
@@ -87,7 +93,7 @@ function callMultiEngine(
   http: HttpClient.HttpClient,
   params: Schema.Schema.Type<typeof Parameters>,
   flags: { exa: boolean; parallel: boolean },
-): Effect.Effect<{ output: string | undefined; engines: readonly string[] }> {
+): Effect.Effect<{ output: string | undefined; engines: readonly string[]; engineStatus?: string }> {
   return Effect.gen(function* () {
     const engines = Search.Selector.selectEngines({
       brave: !!process.env.BRAVE_API_KEY,
@@ -95,11 +101,13 @@ function callMultiEngine(
       zhihu: true,
       exa: flags.exa,
       parallel: flags.parallel,
+      timeRange: params.timeRange,
+      lang: params.lang,
     })
     if (engines.length === 0) return { output: undefined, engines: [] }
 
     const numResults = params.numResults || 8
-    const cacheKey = Search.Cache.ResultCache.makeKey(params.query, numResults)
+    const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}`, numResults)
 
     // 检查缓存
     const cached = Search.Cache.globalResultCache.get(cacheKey)
@@ -115,7 +123,11 @@ function callMultiEngine(
 
     // 使用全局引擎健康状态（跨调用持久化）
     const state = Search.Executor.getGlobalState()
-    const opts = Search.Engine.makeSearchOptions({ numResults })
+    const opts = Search.Engine.makeSearchOptions({
+      numResults,
+      timeRange: params.timeRange,
+      lang: params.lang,
+    })
     const execResult = yield* Search.Executor.executeAll(engines, http, params.query, opts, state)
 
     // 缓存成功结果
@@ -134,7 +146,10 @@ function callMultiEngine(
       ? Search.Aggregator.formatResults(aggregated, params.query)
       : undefined
 
-    return { output, engines: engineNames }
+    // 生成引擎健康状态报告（用于调试）
+    const engineStatus = Search.Aggregator.formatEngineStatusReport(state.engineStatuses)
+
+    return { output, engines: engineNames, engineStatus }
   })
 }
 
@@ -143,12 +158,16 @@ function callProvider(
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
   ctx: Tool.Context,
-) {
+): Effect.Effect<{ output: string | undefined; engines: readonly string[]; metadata?: Record<string, unknown> }> {
   if (provider === "duckduckgo") {
     // DuckDuckGo → 多引擎聚合模式（DuckDuckGo + Brave 等并行搜索）
     return Effect.gen(function* () {
       const result = yield* callMultiEngine(http, params, { exa: false, parallel: false })
-      return { output: result.output, engines: result.engines }
+      return {
+        output: result.output,
+        engines: result.engines,
+        metadata: result.engineStatus ? { engineStatus: result.engineStatus } : undefined,
+      }
     })
   }
 
@@ -166,7 +185,15 @@ function callProvider(
       },
       "25 seconds",
       parallelAuthHeaders(),
-    ).pipe(Effect.map((output) => ({ output, engines: ["parallel"] as readonly string[] })))
+    ).pipe(
+      Effect.map((output) => ({ output, engines: ["parallel"] as readonly string[] })),
+      Effect.catch((err: unknown) =>
+        Effect.succeed({
+          output: `Parallel 搜索失败: ${err instanceof Error ? err.message : String(err)}`,
+          engines: [] as readonly string[],
+        }),
+      ),
+    )
   }
 
   return McpWebSearch.call(
@@ -182,7 +209,15 @@ function callProvider(
       contextMaxCharacters: params.contextMaxCharacters,
     },
     "25 seconds",
-  ).pipe(Effect.map((output) => ({ output, engines: ["exa"] as readonly string[] })))
+  ).pipe(
+    Effect.map((output) => ({ output, engines: ["exa"] as readonly string[] })),
+    Effect.catch((err: unknown) =>
+      Effect.succeed({
+        output: `Exa 搜索失败: ${err instanceof Error ? err.message : String(err)}`,
+        engines: [] as readonly string[],
+      }),
+    ),
+  )
 }
 
 export const WebSearchTool = Tool.define(
@@ -234,12 +269,17 @@ export const WebSearchTool = Tool.define(
             }
           }
 
-          const { output, engines } = yield* callProvider(http, provider, params, ctx)
+          const result = yield* callProvider(http, provider, params, ctx)
 
           return {
-            output: output ?? "未找到搜索结果。请尝试其他查询词。",
+            output: result.output ?? "未找到搜索结果。请尝试其他查询词。",
             title: `${title}: ${params.query}`,
-            metadata: { provider, available: true, engines },
+            metadata: {
+              provider,
+              available: true,
+              engines: result.engines,
+              ...(result.metadata ?? {}),
+            },
           }
         }).pipe(Effect.orDie),
     }

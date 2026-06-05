@@ -39,28 +39,59 @@ function isSimilarTitle(a: string, b: string): boolean {
   return levenshtein(a, b) / maxLen < 0.2
 }
 
+/**
+ * 计算聚合评分
+ *
+ * 借鉴 SearXNG 的 calculate_score 算法，但增加了时效性衰减因子。
+ *
+ * 评分组成：
+ * 1. 基础分 = Σ(weight / position) — 位置越前、引擎权重越高，得分越高
+ * 2. 多样性加分 = 基础分 × (1 + (引擎数-1) × 0.2) — 多引擎一致结果加分
+ * 3. 时效性衰减 = 分 × max(0.5, 1 - 天数/365) — 一年内线性衰减至 50%
+ */
 export function calculateScore(
   engines: readonly string[],
   positions: readonly number[],
   weights: Map<string, number>,
+  publishedDate?: number,
 ): number {
+  // 基础分：加权位置分
   let score = 0
   for (let i = 0; i < engines.length; i++) {
     score += (weights.get(engines[i]) ?? 1.0) / positions[i]
   }
+
+  // 引擎多样性加分（多引擎一致 → 置信度高）
   if (engines.length > 1) score *= 1 + (engines.length - 1) * 0.2
+
+  // 时效性加分（新结果额外加 10%，一年后衰减至 -10%）
+  if (publishedDate) {
+    const daysAgo = (Date.now() - publishedDate) / 86_400_000
+    const recencyFactor = Math.max(0.5, 1 - daysAgo / 365)
+    score *= recencyFactor
+  }
+
   return score
 }
 
 export interface AggregateContext {
   weights: Map<string, number>
   maxResults: number
+  /** 来自搜索引擎的拼写建议（如 "Did you mean: ..."） */
+  suggestion?: string
 }
 
 export function aggregate(
   allResults: readonly SearchResult[],
   ctx: AggregateContext,
 ): AggregatedResult[] {
+  // 从原始结果中提取拼写建议
+  if (!ctx.suggestion) {
+    for (const r of allResults) {
+      if (r.suggestion) { ctx.suggestion = r.suggestion; break }
+    }
+  }
+
   // 阶段 1: URL 去重
   const urlMap = new Map<string, SearchResult[]>()
   for (const r of allResults) {
@@ -90,8 +121,10 @@ export function aggregate(
     merged.push(similarGroup.length === 1 ? similarGroup[0] : mergeSimilar(similarGroup))
   }
 
-  // 阶段 3: 评分 + 多样性排序
-  for (const r of merged) r.score = calculateScore(r.engines, r.positions, ctx.weights)
+  // 阶段 3: 评分（含时效性衰减）+ 多样性排序
+  for (const r of merged) {
+    r.score = calculateScore(r.engines, r.positions, ctx.weights, r.publishedDate)
+  }
   merged.sort((a, b) => b.score - a.score)
 
   return diversifyByDomain(merged, 3).slice(0, ctx.maxResults)
@@ -104,6 +137,7 @@ function mergeGroup(group: SearchResult[]): AggregatedResult {
   let bestTitle = first.title
   let bestSnippet = first.snippet
   let bestDate = first.publishedDate
+  let suggestion: string | undefined
 
   for (const r of group) {
     engines.push(r.engine)
@@ -111,16 +145,19 @@ function mergeGroup(group: SearchResult[]): AggregatedResult {
     if (r.title.length > bestTitle.length) bestTitle = r.title
     if (r.snippet.length > bestSnippet.length) bestSnippet = r.snippet
     if (r.publishedDate && (!bestDate || r.publishedDate > bestDate)) bestDate = r.publishedDate
+    if (r.suggestion && !suggestion) suggestion = r.suggestion
   }
 
   return makeAggregatedResult({
     title: bestTitle, url: first.url, snippet: bestSnippet,
     engines, positions, publishedDate: bestDate, category: first.category,
+    suggestion,
   })
 }
 
 function mergeSimilar(group: AggregatedResult[]): AggregatedResult {
   const first = group[0]
+  const suggestion = group.find((r) => r.suggestion)?.suggestion
   return makeAggregatedResult({
     title: first.title,
     url: first.url,
@@ -132,6 +169,7 @@ function mergeSimilar(group: AggregatedResult[]): AggregatedResult {
       first.publishedDate,
     ),
     category: first.category,
+    suggestion,
   })
 }
 
@@ -156,12 +194,49 @@ function diversifyByDomain(results: AggregatedResult[], maxPerDomain: number): A
   return diversified
 }
 
-export function formatResults(results: AggregatedResult[], query: string): string {
+export function formatResults(results: AggregatedResult[], query: string, ctxSuggestion?: string): string {
   if (results.length === 0) return ""
+
   const lines = results.map(
-    (r, i) => `${i + 1}. ${r.title}\n   URL: ${r.url}\n   来源: ${r.engines.join(" + ")}\n   ${r.snippet ?? ""}`,
+    (r, i) =>
+      `${i + 1}. ${r.title}\n` +
+      `   URL: ${r.url}\n` +
+      `   来源: ${r.engines.join(" + ")}\n` +
+      `   ${r.snippet ?? ""}` +
+      (r.publishedDate ? `\n   日期: ${new Date(r.publishedDate).toISOString().slice(0, 10)}` : ""),
   )
-  return [`搜索结果 "${query}"：`, ...lines].join("\n\n")
+
+  const parts: string[] = [`搜索结果 "${query}"：`, ...lines]
+
+  // 如果有拼写建议，追加在末尾
+  const suggestion = results.find((r) => r.suggestion)?.suggestion ?? ctxSuggestion
+  if (suggestion) {
+    parts.push(`\n💡 您是不是想找: ${suggestion}`)
+  }
+
+  return parts.join("\n\n")
+}
+
+/** 格式化引擎健康状态报告 */
+export function formatEngineStatusReport(statuses: Map<string, import("./engine").EngineStatus>): string {
+  const lines: string[] = ["引擎健康状态报告："]
+  for (const [name, s] of statuses) {
+    const latency = s.metrics.successfulRequests > 0
+      ? `${Math.round(s.metrics.avgLatency)}ms avg`
+      : "no data"
+    const successRate = s.metrics.totalRequests > 0
+      ? `${Math.round((s.metrics.successfulRequests / s.metrics.totalRequests) * 100)}%`
+      : "no data"
+    lines.push(
+      `  ${name}:` +
+      ` ${s.suspended ? "🔴暂停中" : "🟢正常"}` +
+      ` 成功率=${successRate}` +
+      ` 延迟=${latency}` +
+      ` 连续失败=${s.consecutiveFailures}` +
+      (s.lastError ? ` 上次错误="${s.lastError}"` : ""),
+    )
+  }
+  return lines.join("\n")
 }
 
 export * as Aggregator from "./aggregator"

@@ -20,17 +20,63 @@ export function makeDuckDuckGo(config: EngineConfig): SearchEngine {
   return {
     name: config.name,
     config,
-    search: (http, query, opts) => searchWithFallback(http, query, opts.numResults || config.maxResults),
+    search: (http, query, opts) => searchWithFallback(http, query, opts),
   }
+}
+
+/**
+ * 构建 DDG 区域参数
+ *
+ * 根据 lang 设置合适的 kl 参数：
+ * - "zh-CN" → "cn-zh"
+ * - "zh-TW" → "tw-zh"
+ * - "ja" → "jp-jp"
+ * - "en" → "us-en"
+ * - 默认 → "wt-wt"（不指定区域）
+ */
+function langToKl(lang?: string): string {
+  if (!lang) return "wt-wt"
+  const map: Record<string, string> = {
+    "zh-CN": "cn-zh",
+    "zh-TW": "tw-zh",
+    "zh": "cn-zh",
+    "ja": "jp-jp",
+    "ko": "kr-kr",
+    "en": "us-en",
+    "en-US": "us-en",
+    "en-GB": "uk-en",
+    "fr": "fr-fr",
+    "de": "de-de",
+    "es": "es-es",
+    "pt": "br-pt",
+    "it": "it-it",
+    "ru": "ru-ru",
+  }
+  return map[lang] ?? map[lang?.split("-")[0]] ?? "wt-wt"
+}
+
+/**
+ * 根据 timeRange 构建 DDG 的 df 参数（日期过滤）
+ */
+function timeRangeToDf(timeRange?: "day" | "week" | "month" | "year"): string {
+  if (!timeRange) return ""
+  const map: Record<string, string> = {
+    day: "d",
+    week: "w",
+    month: "m",
+    year: "y",
+  }
+  return map[timeRange] ?? ""
 }
 
 function searchWithFallback(
   http: HttpClient.HttpClient,
   query: string,
-  numResults: number,
+  opts: SearchOptions,
 ): Effect.Effect<readonly SearchResult[], unknown, never> {
+  const numResults = opts.numResults || 8
   return Effect.gen(function* () {
-    const htmlResults = yield* searchHtmlPost(http, query, numResults).pipe(
+    const htmlResults = yield* searchHtmlPost(http, query, numResults, opts).pipe(
       Effect.catchIf(() => true, () => Effect.succeed([] as readonly SearchResult[])),
     )
     if (htmlResults.length > 0) return htmlResults
@@ -50,16 +96,20 @@ function searchHtmlPost(
   http: HttpClient.HttpClient,
   query: string,
   numResults: number,
+  opts: SearchOptions,
 ): Effect.Effect<readonly SearchResult[], unknown, never> {
   return Effect.gen(function* () {
-    const formData = new URLSearchParams({ q: query, b: "", kl: "wt-wt" })
+    const formData = new URLSearchParams({ q: query, b: "", kl: langToKl(opts.lang) })
+    const df = timeRangeToDf(opts.timeRange)
+    if (df) formData.set("df", df)
+
     const response = yield* http.execute(
       HttpClientRequest.post(DDG_HTML_URL).pipe(
         HttpClientRequest.setHeaders({
           "User-Agent": USER_AGENT,
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
+          "Accept-Language": opts.lang ? `${opts.lang},en;q=0.9` : "en-US,en;q=0.9",
           "Sec-Fetch-Dest": "document",
           "Sec-Fetch-Mode": "navigate",
           "Sec-Fetch-Site": "same-origin",
@@ -76,8 +126,43 @@ function searchHtmlPost(
 
     const vqdMatch = html.match(/<input[^>]*name=["']vqd["'][^>]*value=["']([^"']+)["']/i)
     if (vqdMatch?.[1]) vqdCache.set(`${query}//${USER_AGENT}`, { vqd: vqdMatch[1], expires: Date.now() + 3600_000 })
-    return parseHtmlResults(html, numResults)
+
+    const results = parseHtmlResults(html, numResults)
+
+    // 尝试提取拼写建议（"Did you mean"）并附加到第一条结果上
+    const suggestion = extractSuggestion(html)
+    if (suggestion && results.length > 0) {
+      const augmented = [...results]
+      augmented[0] = makeSearchResult({ ...augmented[0], suggestion })
+      return augmented
+    }
+
+    return results
   })
+}
+
+/**
+ * 从 DDG HTML 响应中提取拼写建议
+ *
+ * DDG 在搜索结果页上显示 "Showing results for X" 或 "Did you mean: X"
+ * 我们提取修正后的查询词，供聚合器展示给 LLM。
+ */
+function extractSuggestion(html: string): string | undefined {
+  // DDG 的 "Showing results for" 模式
+  const showingMatch = html.match(
+    /class=["'][^"']*spelling[^"']*["'][^>]*>.*?class=["'][^"']*result__suggestion[^"']*["'][^>]*>([^<]+)/i,
+  )
+  if (showingMatch?.[1]) return stripHtml(showingMatch[1])
+
+  // 备选模式：<a class="result__suggestion" ...>
+  const linkMatch = html.match(/class=["'][^"']*result__suggestion[^"']*["'][^>]*>([^<]+)/i)
+  if (linkMatch?.[1]) return stripHtml(linkMatch[1])
+
+  // "Did you mean" 文本模式
+  const didYouMean = html.match(/did\s+you\s+mean[:\s]+([^<.]+)/i)
+  if (didYouMean?.[1]) return stripHtml(didYouMean[1])
+
+  return undefined
 }
 
 function searchJsonApi(

@@ -10,8 +10,22 @@ import { makeDuckDuckGo } from "./engines/duckduckgo"
 import { makeBrave } from "./engines/brave"
 import { makeSiteScopedEngine } from "./engines/site-scoped"
 
+export interface SelectFlags {
+  exa?: boolean
+  parallel?: boolean
+  brave?: boolean
+  xiaohongshu?: boolean
+  zhihu?: boolean
+  /** 查询类型提示，用于智能选择相关引擎 */
+  queryType?: "general" | "code" | "news" | "academic" | "social"
+  /** 优先返回最新结果 */
+  timeRange?: "day" | "week" | "month" | "year"
+  /** 语言偏好 */
+  lang?: string
+}
+
 export function selectEngines(
-  flags?: { exa?: boolean; parallel?: boolean; brave?: boolean; xiaohongshu?: boolean; zhihu?: boolean },
+  flags?: SelectFlags,
 ): SearchEngine[] {
   const engines: SearchEngine[] = []
 
@@ -58,6 +72,15 @@ export function selectEngines(
       maxResults: 5,
       priority: 0,
     })))
+  }
+
+  // 根据查询类型动态调整引擎配置
+  // 新闻类查询：启用更大的 maxResults
+  if (flags?.queryType === "news") {
+    for (const e of engines) {
+      // @ts-ignore - 运行时调整 maxResults
+      e.config.maxResults = Math.max(e.config.maxResults, 10)
+    }
   }
 
   return engines

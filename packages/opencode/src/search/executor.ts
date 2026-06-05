@@ -7,7 +7,7 @@
 import { Duration, Effect } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import type { EngineStatus, SearchEngine, SearchOptions, SearchResult } from "./engine"
-import { EngineError, makeEngineStatus } from "./engine"
+import { AccessDeniedError, CaptchaError, EngineError, RateLimitError, TimeoutError, makeEngineStatus } from "./engine"
 
 /** 执行器状态（可变，追踪引擎健康） */
 export class ExecutorState {
@@ -42,9 +42,13 @@ type EngineOutcome =
 /**
  * 并发执行多个搜索引擎
  *
- * 引擎健康检查（熔断器）：
- * - 连续失败 3 次 → 暂停 5 分钟
- * - 超时引擎自动跳过
+ * 引擎健康检查（熔断器）借鉴 SearXNG 的设计：
+ * - RateLimitError → 不计数，对端告诉我们要多久（Retry-After）
+ * - CaptchaError → 永久暂停（需要人工干预）
+ * - AccessDeniedError → 永久暂停（引擎封禁我们的 IP）
+ * - TimeoutError → 计为失败，退避
+ * - 其他错误 → 计为失败，退避
+ * - 指数退避：1次→1分，2次→5分，3+次→15分
  * - 错误不会级联到其他引擎
  */
 export function executeAll(
@@ -89,10 +93,12 @@ export function executeAll(
 /**
  * 安全地执行单个引擎搜索，捕获所有错误和缺陷
  *
- * 使用 Effect.gen + try/catch 模式：
- * - 引擎只执行一次，成功则重置健康状态
- * - 任何错误或缺陷都记入引擎健康状态（熔断器计数）
- * - 错误不会传播到外部，始终返回 EngineOutcome
+ * 借鉴 SearXNG 的 OnlineProcessor.search() 异常处理模式。
+ * 不同类型错误有不同处理策略：
+ * - RateLimit: 不计数，用 Retry-After 设置暂停时间
+ * - Captcha/AccessDenied: 永久暂停
+ * - Timeout: 计数为失败
+ * - 其他: 计数为失败
  */
 function executeEngineSafely(
   engine: SearchEngine,
@@ -101,26 +107,118 @@ function executeEngineSafely(
   opts: SearchOptions,
   state: ExecutorState,
 ): Effect.Effect<EngineOutcome, never, never> {
+  const startTime = Date.now()
+
   return (Effect.gen(function* () {
-    const results = yield* engine.search(http, query, opts).pipe(
+    const maybeResults = yield* engine.search(http, query, opts).pipe(
       Effect.timeout(engine.config.timeout),
     )
+    if (maybeResults === undefined) {
+      throw new TimeoutError({ engine: engine.name, message: `timed out after ${engine.config.timeout}ms` })
+    }
+    const results = maybeResults
+    const latency = Date.now() - startTime
     const status = getOrCreateStatus(state, engine.name)
     status.consecutiveFailures = 0
+    status.metrics.totalRequests++
+    status.metrics.successfulRequests++
+    status.metrics.totalLatency += latency
+    status.metrics.avgLatency = status.metrics.totalLatency / status.metrics.successfulRequests
+    status.metrics.lastSuccessAt = Date.now()
     return { _tag: "success", results } as EngineOutcome
   }) as Effect.Effect<EngineOutcome, unknown, never>).pipe(
     Effect.catch((error) => {
+      const latency = Date.now() - startTime
+      if (error instanceof RateLimitError) {
+        // 限流不计数为连续失败，用 Retry-After 设置暂停
+        const status = getOrCreateStatus(state, engine.name)
+        status.lastError = error.message
+        status.metrics.totalRequests++
+        const retryAfter = error.retryAfter ?? 60
+        status.suspended = true
+        status.suspendedUntil = Date.now() + retryAfter * 1000
+        status.lastSuspensionReason = `rate-limited, retry-after: ${retryAfter}s`
+        status.lastSuspensionDuration = retryAfter * 1000
+        return Effect.succeed<EngineOutcome>({
+          _tag: "error",
+          error: new EngineError({ engine: engine.name, message: error.message, retryable: true }),
+        })
+      }
+      if (error instanceof CaptchaError || error instanceof AccessDeniedError) {
+        // CAPTCHA 和拒绝 → 永久暂停（不计数，自然恢复周期 30 分钟）
+        const status = getOrCreateStatus(state, engine.name)
+        status.lastError = error.message
+        status.metrics.totalRequests++
+        status.consecutiveFailures++ // 计数以便后续可能自动恢复
+        status.suspended = true
+        status.suspendedUntil = Date.now() + Duration.toMillis(Duration.minutes(30))
+        status.lastSuspensionReason = error instanceof CaptchaError ? "captcha-challenge" : "access-denied"
+        status.lastSuspensionDuration = Duration.toMillis(Duration.minutes(30))
+        return Effect.succeed<EngineOutcome>({
+          _tag: "error",
+          error: new EngineError({ engine: engine.name, message: error.message, retryable: false }),
+        })
+      }
+      if (error instanceof TimeoutError) {
+        // 超时 → 计数为失败
+        const status = getOrCreateStatus(state, engine.name)
+        status.metrics.totalRequests++
+        applyExponentialBackoff(status, engine.name, `timeout after ${engine.config.timeout}ms`)
+        return Effect.succeed<EngineOutcome>({
+          _tag: "error",
+          error: new EngineError({ engine: engine.name, message: `timeout: ${error.message}`, retryable: true }),
+        })
+      }
+      // 一般错误
       const msg = error instanceof Error ? error.message : String(error)
-      const engineErr = new EngineError({ engine: engine.name, message: msg, retryable: true })
-      updateEngineStatus(state, engine.name, engineErr)
-      return Effect.succeed<EngineOutcome>({ _tag: "error", error: engineErr })
+      const status = getOrCreateStatus(state, engine.name)
+      status.metrics.totalRequests++
+      applyExponentialBackoff(status, engine.name, msg)
+      return Effect.succeed<EngineOutcome>({
+        _tag: "error",
+        error: new EngineError({ engine: engine.name, message: msg, retryable: true }),
+      })
     }),
     Effect.catchDefect((defect) => {
       const engineErr = new EngineError({ engine: engine.name, message: String(defect), retryable: false })
-      updateEngineStatus(state, engine.name, engineErr)
+      const status = getOrCreateStatus(state, engine.name)
+      status.metrics.totalRequests++
+      // 缺陷（不可恢复异常）→ 也指数退避
+      applyExponentialBackoff(status, engine.name, `defect: ${String(defect)}`)
       return Effect.succeed<EngineOutcome>({ _tag: "error", error: engineErr })
     }),
   )
+}
+
+/**
+ * 指数退避算法
+ *
+ * 借鉴 SearXNG 的 suspend 机制，但改用指数级增长暂停时间：
+ * - 连续失败 1 次 → 暂停 1 分钟
+ * - 连续失败 2 次 → 暂停 5 分钟
+ * - 连续失败 3+ 次 → 暂停 15 分钟
+ * - 最大暂停 60 分钟（硬上限）
+ *
+ * 相比 SearXNG 的固定暂停（最短 ban_time_on_fail），我们的指数退避更温和，
+ * 允许引擎在短时间故障后快速恢复，同时对持续故障做出更强硬的响应。
+ */
+function applyExponentialBackoff(status: EngineStatus, engineName: string, errorMessage: string): void {
+  status.consecutiveFailures++
+  status.totalFailures++
+  status.lastError = errorMessage
+
+  const backoffMinutes = status.consecutiveFailures <= 1
+    ? 1
+    : status.consecutiveFailures <= 2
+      ? 5
+      : 15
+
+  const clamped = Math.min(backoffMinutes, 60) // 上限 60 分钟
+
+  status.suspended = true
+  status.suspendedUntil = Date.now() + Duration.toMillis(Duration.minutes(clamped))
+  status.lastSuspensionReason = `exponential-backoff@${clamped}min`
+  status.lastSuspensionDuration = Duration.toMillis(Duration.minutes(clamped))
 }
 
 function getOrCreateStatus(state: ExecutorState, name: string): EngineStatus {
@@ -130,16 +228,6 @@ function getOrCreateStatus(state: ExecutorState, name: string): EngineStatus {
     state.engineStatuses.set(name, status)
   }
   return status
-}
-
-function updateEngineStatus(state: ExecutorState, engineName: string, _err: EngineError): void {
-  const status = getOrCreateStatus(state, engineName)
-  status.consecutiveFailures++
-  status.lastError = _err.message
-  if (status.consecutiveFailures >= 3) {
-    status.suspended = true
-    status.suspendedUntil = Date.now() + Duration.toMillis(Duration.minutes(5))
-  }
 }
 
 export * as Executor from "./executor"
