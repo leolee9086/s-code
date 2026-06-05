@@ -1,0 +1,235 @@
+# SearXNG Engine Tracking Table
+
+## Summary
+- Total SearXNG engines: 222
+- Our engines: 56 (including 4 utility files)
+- Actual engine implementations: 52
+- Coverage: ~23% of SearXNG engines
+
+## Engine Categories
+
+### General Search (16 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| google.py | google.ts | ✅ Done | HTML parsing |
+| bing.py | bing.ts | ✅ Done | HTML parsing |
+| duckduckgo.py | duckduckgo.ts | ✅ Done | HTML parsing |
+| brave.py | brave.ts | ✅ Done | JSON API |
+| startpage.py | - | ❌ TODO | Complex (Google proxy) |
+| qwant.py | qwant.ts | ✅ Done | JSON API |
+| yahoo.py | yahoo.ts | ✅ Done | HTML parsing |
+| yandex.py | yandex.ts | ✅ Done | HTML parsing |
+| naver.py | naver.ts | ✅ Done | HTML parsing |
+| presearch.py | - | ❌ TODO | Decentralized search |
+| mwmbl.py | - | ❌ TODO | Community search |
+| seznam.py | - | ❌ TODO | Czech search |
+| aol.py | - | ❌ TODO | AOL search |
+| gmx.py | - | ❌ TODO | GMX search |
+| yep.py | - | ❌ TODO | AI-powered search |
+| searx_engine.py | - | ⚠️ Skip | Meta-engine (SearXNG instance) |
+
+### Chinese Search (5 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| baidu.py | baidu.ts | ✅ Done | JSON API |
+| sogou.py | sogou.ts | ✅ Done | HTML parsing |
+| 360search.py | 360search.ts | ✅ Done | HTML parsing |
+| chinaso.py | - | ❌ TODO | Chinese search |
+| quark.py | - | ❌ TODO | Quark search |
+
+### Images (20 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| google_images.py | google-images.ts | ✅ Done | JSON API |
+| bing_images.py | bing-images.ts | ✅ Done | HTML parsing |
+| flickr.py | flickr.ts | ✅ Done | JSON API |
+| pixabay.py | - | ✅ In open-api.ts | JSON API |
+| unsplash.py | - | ✅ In open-api.ts | JSON API |
+| pexels.py | pexels.ts | ✅ Done | HTML parsing |
+| wallhaven.py | wallhaven.ts | ✅ Done | JSON API |
+| pinterest.py | pinterest.ts | ✅ Done | JSON API |
+| deviantart.py | deviantart.ts | ✅ Done | HTML parsing |
+| openverse.py | openverse.ts | ✅ Done | JSON API |
+| flickr_noapi.py | - | ❌ TODO | Flickr HTML fallback |
+| imgur.py | - | ❌ TODO | Imgur search |
+| 500px.py | - | ❌ TODO | 500px photography |
+| adobe_stock.py | - | ❌ TODO | Adobe Stock (needs key) |
+| artstation.py | - | ❌ TODO | ArtStation art |
+| cara.py | - | ❌ TODO | Cara art community |
+| ipernity.py | - | ❌ TODO | Ipernity photos |
+| pixiv.py | - | ❌ TODO | Pixiv art (Japanese) |
+| uxwing.py | - | ❌ TODO | UX Wing icons |
+| flaticon.py | - | ❌ TODO | Flaticon icons |
+| public_domain_image_archive.py | - | ❌ TODO | Public domain images |
+| openclipart.py | - | ❌ TODO | OpenClipart |
+| tineye.py | - | ❌ TODO | Reverse image search |
+| sogou_images.py | - | ❌ TODO | Sogou images |
+
+### Videos (17 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| youtube.py | youtube.ts | ✅ Done | HTML parsing |
+| bing_videos.py | bing-videos.ts | ✅ Done | HTML parsing |
+| dailymotion.py | dailymotion.ts | ✅ Done | REST API |
+| vimeo.py | vimeo.ts | ✅ Done | JSON API |
+| bilibili.py | bilibili.ts | ✅ Done | JSON API |
+| niconico.py | niconico.ts | ✅ Done | HTML parsing |
+| google_videos.py | - | ❌ TODO | Google video search |
+| bitchute.py | - | ❌ TODO | Bitchute video |
+| odysee.py | - | ❌ TODO | Odysee video |
+| rumble.py | - | ❌ TODO | Rumble video |
+| peertube.py | - | ❌ TODO | PeerTube decentralized |
+| piped.py | - | ❌ TODO | Piped (YouTube frontend) |
+| invidious.py | - | ❌ TODO | Invidious (YouTube frontend) |
+| iqiyi.py | - | ❌ TODO | iQiyi (Chinese video) |
+| acfun.py | - | ❌ TODO | AcFun (Chinese video) |
+| sogou_videos.py | - | ❌ TODO | Sogou videos |
+| tubearchivist.py | - | ❌ TODO | TubeArchivist |
+
+### News (6 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| google_news.py | google-news.ts | ✅ Done | HTML parsing |
+| bing_news.py | bing-news.ts | ✅ Done | HTML parsing |
+| yahoo_news.py | - | ❌ TODO | Yahoo News |
+| reuters.py | - | ❌ TODO | Reuters news |
+| ansa.py | - | ❌ TODO | ANSA (Italian) |
+| tagesschau.py | - | ❌ TODO | Tagesschau (German) |
+
+### Music (8 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| soundcloud.py | soundcloud.ts | ✅ Done | JSON API |
+| bandcamp.py | - | ❌ TODO | Bandcamp music |
+| deezer.py | - | ❌ TODO | Deezer music |
+| genius.py | - | ❌ TODO | Genius lyrics |
+| mixcloud.py | - | ❌ TODO | Mixcloud music |
+| freesound.py | - | ❌ TODO | Freesound audio |
+| spotify.py | - | ❌ TODO | Spotify (needs key) |
+| yandex_music.py | - | ❌ TODO | Yandex Music |
+
+### Academic/Science (9 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| arxiv.py | arxiv.ts | ✅ Done | JSON API |
+| google_scholar.py | google-scholar.ts | ✅ Done | HTML parsing |
+| semantic_scholar.py | semantic-scholar.ts | ✅ Done | JSON API |
+| pubmed.py | - | ✅ In open-api.ts | JSON API |
+| openalex.py | openalex.ts | ✅ Done | JSON API |
+| crossref.py | crossref.ts | ✅ Done | JSON API |
+| springer.py | - | ❌ TODO | Springer academic |
+| astrophysics_data_system.py | - | ❌ TODO | ADS astronomy |
+| open_meteo.py | - | ❌ TODO | Weather API |
+| pdbe.py | - | ❌ TODO | Protein Data Bank |
+
+### Code/IT (16 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| github.py | github.ts | ✅ Done | REST API |
+| gitlab.py | gitlab.ts | ✅ Done | REST API |
+| huggingface.py | huggingface.ts | ✅ Done | JSON API |
+| crates.py | crates.ts | ✅ Done | JSON API |
+| npm.py | - | ✅ In open-api.ts | JSON API |
+| docker_hub.py | - | ✅ In open-api.ts | JSON API |
+| pypi.py | pypi.ts | ✅ Done | HTML parsing |
+| pkg_go_dev.py | - | ❌ TODO | Go packages |
+| lib_rs.py | - | ❌ TODO | Rust docs |
+| metacpan.py | - | ❌ TODO | Perl packages |
+| alpinelinux.py | - | ❌ TODO | Alpine packages |
+| archlinux.py | - | ❌ TODO | Arch packages |
+| voidlinux.py | - | ❌ TODO | Void packages |
+| fdroid.py | - | ❌ TODO | F-Droid apps |
+| gitea.py | - | ❌ TODO | Gitea repos |
+| sourcehut.py | - | ❌ TODO | SourceHut repos |
+
+### Books (4 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| goodreads.py | goodreads.ts | ✅ Done | HTML parsing |
+| openlibrary.py | openlibrary.ts | ✅ Done | JSON API |
+| zlibrary.py | - | ❌ TODO | Z-Library (piracy) |
+| annas_archive.py | - | ❌ TODO | Anna's Archive |
+
+### Shopping (2 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| ebay.py | ebay.ts | ✅ Done | HTML parsing |
+| steam.py | steam.ts | ✅ Done | JSON API |
+
+### Entertainment (4 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| imdb.py | imdb.ts | ✅ Done | JSON API |
+| rottentomatoes.py | rottentomatoes.ts | ✅ Done | HTML parsing |
+| moviepilot.py | - | ❌ TODO | MoviePilot |
+| senscritique.py | - | ❌ TODO | SensCritique (French) |
+
+### Social (6 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| reddit.py | reddit.ts | ✅ Done | HTML parsing |
+| twitter.py | twitter.ts | ✅ Done | Nitter proxy |
+| mastodon.py | - | ❌ TODO | Mastodon social |
+| lemmy.py | - | ❌ TODO | Lemmy Reddit |
+| discourse.py | - | ❌ TODO | Discourse forums |
+| boardreader.py | - | ❌ TODO | Boardreader forums |
+
+### Maps (2 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| apple_maps.py | - | ❌ TODO | Apple Maps |
+| openstreetmap.py | - | ❌ TODO | OpenStreetMap |
+
+### Other (17 engines)
+| SearXNG Engine | Our Engine | Status | Notes |
+|---------------|------------|--------|-------|
+| wikipedia.py | wikipedia.ts | ✅ Done | JSON API |
+| wikidata.py | - | ❌ TODO | Wikidata |
+| wikicommons.py | - | ❌ TODO | Wikimedia Commons |
+| dictzone.py | - | ❌ TODO | Dictionary |
+| duden.py | - | ❌ TODO | German dictionary |
+| lingva.py | - | ❌ TODO | Translation |
+| libretranslate.py | - | ❌ TODO | Translation |
+| deepl.py | - | ❌ TODO | DeepL translation |
+| currency_convert.py | - | ❌ TODO | Currency conversion |
+| wttr.py | - | ❌ TODO | Weather |
+| emojipedia.py | - | ❌ TODO | Emoji search |
+| selfhst.py | - | ❌ TODO | Self-hosted |
+| devicons.py | - | ❌ TODO | Dev icons |
+| lucide.py | - | ❌ TODO | Lucide icons |
+| material_icons.py | - | ❌ TODO | Material icons |
+| microsoft_learn.py | - | ❌ TODO | Microsoft Learn |
+| hex.py | - | ❌ TODO | HexHub packages |
+
+## Priority TODO List (High-Value Engines)
+
+### Tier 1 - Must Have (General Search)
+1. **startpage.py** - Privacy search engine (complex but very valuable)
+
+### Tier 2 - Should Have (Specialized)
+1. **google_videos.py** - Google video search
+2. **yahoo_news.py** - Yahoo News
+3. **imgur.py** - Image hosting search
+4. **pixiv.py** - Japanese art platform
+5. **bandcamp.py** - Music platform
+6. **genius.py** - Lyrics search
+7. **springer.py** - Academic publisher
+8. **pkg_go_dev.py** - Go packages
+9. **peertube.py** - Decentralized video
+10. **rumble.py** - Video platform
+
+### Tier 3 - Nice to Have (Niche)
+1. **500px.py** - Photography
+2. **artstation.py** - Digital art
+3. **deezer.py** - Music streaming
+4. **reuters.py** - News agency
+5. **mastodon.py** - Social network
+6. **openstreetmap.py** - Maps
+7. **currency_convert.py** - Utility
+8. **wttr.py** - Weather
+
+### Tier 4 - Skip (Low Value / Complex)
+- searx_engine.py (meta-engine)
+- zlibrary.py (piracy)
+- adobe_stock.py (needs API key)
+- spotify.py (needs API key)

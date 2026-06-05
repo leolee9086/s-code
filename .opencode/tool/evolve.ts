@@ -103,10 +103,12 @@ export default tool({
       // 写入失败不应阻塞进化
     }
 
-    const channel = ctx.channel
+    // evolve 构建的是本地开发二进制，始终使用 local 数据库渠道。
+    // 不使用 ctx.channel：如果当前二进制是 evolve 自构建的（OPENCODE_CHANNEL='dev'），
+    // ctx.channel 会返回 "dev" 而非 "local"，导致子进程连到 opencode-dev.db（schema 不兼容）。
     const binArgs = sessionId
-      ? ["-s", sessionId, "--prompt", prompt, "--channel", channel]
-      : ["--prompt", prompt, "--channel", channel]
+      ? ["-s", sessionId, "--prompt", prompt, "--channel", "local"]
+      : ["--prompt", prompt, "--channel", "local"]
 
     // 必须传递 S_CODE_TEMP 和 S_CODE_EVOLVE，否则子进程的 evolveDir() 推算路径错误，
     // isInEvolveScope() 无法将 s-temp 加入白名单，导致工具反复弹 external_directory 授权。

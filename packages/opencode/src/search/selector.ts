@@ -39,6 +39,32 @@ import { makeGoogleNews } from "./engines/google-news"
 import { makeYouTube } from "./engines/youtube"
 import { makeGoogleScholar } from "./engines/google-scholar"
 import { makeTwitter } from "./engines/twitter"
+import { makeHuggingFace } from "./engines/huggingface"
+import { makeGitLab } from "./engines/gitlab"
+import { makeIMDb } from "./engines/imdb"
+import { makeGooglePlay } from "./engines/google-play"
+import { makeGoodreads } from "./engines/goodreads"
+import { makeCrates } from "./engines/crates"
+import { makePyPIHtml } from "./engines/pypi"
+import { makeOpenLibrary } from "./engines/openlibrary"
+import { makeWallhaven } from "./engines/wallhaven"
+import { makeCrossRef } from "./engines/crossref"
+import { makeOpenverse } from "./engines/openverse"
+import { makeEbay } from "./engines/ebay"
+import { makePinterest } from "./engines/pinterest"
+import { makeQwant } from "./engines/qwant"
+import { makeYahoo } from "./engines/yahoo"
+import { makeRottenTomatoes } from "./engines/rottentomatoes"
+import { makeSteam } from "./engines/steam"
+import { makePexels } from "./engines/pexels"
+import { makeOpenAlex } from "./engines/openalex"
+import { makeNiconico } from "./engines/niconico"
+import { makeDeviantArt } from "./engines/deviantart"
+import { makeGoogleVideos } from "./engines/google-videos"
+import { makeBandcamp } from "./engines/bandcamp"
+import { makeGenius } from "./engines/genius"
+import { makeImgur } from "./engines/imgur"
+import { makeRumble } from "./engines/rumble"
 
 
 /**
@@ -446,7 +472,7 @@ export function selectEngines(
     })))
   }
 
-  // 代码类查询：GitHub
+  // 代码类查询：GitHub + GitLab + HuggingFace
   if (!flags || flags?.queryType === "code") {
     engines.push(makeGitHub(makeEngineConfig({
       name: "github",
@@ -455,6 +481,22 @@ export function selectEngines(
       maxResults: 5,
       priority: 1,
       requiresKey: !!process.env.GITHUB_TOKEN,
+    })))
+    engines.push(makeGitLab(makeEngineConfig({
+      name: "gitlab",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: !!process.env.GITLAB_TOKEN,
+    })))
+    engines.push(makeHuggingFace(makeEngineConfig({
+      name: "huggingface",
+      weight: 1.0,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
     })))
   }
 
@@ -483,6 +525,294 @@ export function selectEngines(
     engines.push(makeDockerHub(makeEngineConfig({ name: "dockerhub", weight: 0.6, timeout: 10000, maxResults: 5, requiresKey: false })))
     // Q&A
     engines.push(makeStackExchange(makeEngineConfig({ name: "stackexchange", weight: 0.8, timeout: 10000, maxResults: 5, requiresKey: false })))
+  }
+
+  // 电影/娱乐类查询：IMDb
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeIMDb(makeEngineConfig({
+      name: "imdb",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 应用搜索：Google Play
+  if (!flags) {
+    engines.push(makeGooglePlay(makeEngineConfig({
+      name: "google-play",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 图书搜索：Goodreads
+  if (!flags || flags?.queryType === "academic") {
+    engines.push(makeGoodreads(makeEngineConfig({
+      name: "goodreads",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Rust 包搜索：crates.io
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makeCrates(makeEngineConfig({
+      name: "crates",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Python 包搜索：PyPI
+  if (!flags || flags?.queryType === "code") {
+    engines.push(makePyPIHtml(makeEngineConfig({
+      name: "pypi-html",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 图书搜索：Open Library（JSON API，免费）
+  if (!flags || flags?.queryType === "academic") {
+    engines.push(makeOpenLibrary(makeEngineConfig({
+      name: "openlibrary",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 壁纸搜索：Wallhaven
+  if (!flags) {
+    engines.push(makeWallhaven(makeEngineConfig({
+      name: "wallhaven",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 学术 DOI 搜索：Crossref
+  if (!flags || flags?.queryType === "academic") {
+    engines.push(makeCrossRef(makeEngineConfig({
+      name: "crossref",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 开放媒体搜索：Openverse（Creative Commons 图片）
+  if (!flags) {
+    engines.push(makeOpenverse(makeEngineConfig({
+      name: "openverse",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 购物搜索：eBay
+  if (!flags) {
+    engines.push(makeEbay(makeEngineConfig({
+      name: "ebay",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 图片搜索：Pinterest
+  if (!flags) {
+    engines.push(makePinterest(makeEngineConfig({
+      name: "pinterest",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 通用搜索：Qwant（法国搜索引擎）
+  if (!flags) {
+    engines.push(makeQwant(makeEngineConfig({
+      name: "qwant",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 通用搜索：Yahoo
+  if (!flags) {
+    engines.push(makeYahoo(makeEngineConfig({
+      name: "yahoo",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 电影评价搜索：Rotten Tomatoes
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeRottenTomatoes(makeEngineConfig({
+      name: "rottentomatoes",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 游戏搜索：Steam
+  if (!flags) {
+    engines.push(makeSteam(makeEngineConfig({
+      name: "steam",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 图片搜索：Pexels（免费图库）
+  if (!flags) {
+    engines.push(makePexels(makeEngineConfig({
+      name: "pexels",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 学术搜索：OpenAlex
+  if (!flags || flags?.queryType === "academic") {
+    engines.push(makeOpenAlex(makeEngineConfig({
+      name: "openalex",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 日本视频搜索：Niconico
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeNiconico(makeEngineConfig({
+      name: "niconico",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 艺术作品搜索：DeviantArt
+  if (!flags) {
+    engines.push(makeDeviantArt(makeEngineConfig({
+      name: "deviantart",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Google 视频搜索
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeGoogleVideos(makeEngineConfig({
+      name: "google-videos",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 音乐搜索：Bandcamp
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeBandcamp(makeEngineConfig({
+      name: "bandcamp",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 歌词搜索：Genius
+  if (!flags || flags?.queryType === "social") {
+    engines.push(makeGenius(makeEngineConfig({
+      name: "genius",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 图片搜索：Imgur
+  if (!flags) {
+    engines.push(makeImgur(makeEngineConfig({
+      name: "imgur",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 视频搜索：Rumble
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeRumble(makeEngineConfig({
+      name: "rumble",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
   }
 
   // 新闻类查询：添加 Bing News + Google News 专用引擎
