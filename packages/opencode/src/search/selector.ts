@@ -30,6 +30,11 @@ import { makeBingVideos } from "./engines/bing-videos"
 import { makeDailymotion } from "./engines/dailymotion"
 import { makeSoundCloud } from "./engines/soundcloud"
 import { makeFlickr } from "./engines/flickr"
+import { makeDouban } from "./engines/douban"
+import { makeWeibo } from "./engines/weibo"
+import { makeReddit } from "./engines/reddit"
+import { makeVimeo } from "./engines/vimeo"
+import { makeStackExchange } from "./engines/stackexchange"
 
 
 /**
@@ -300,6 +305,18 @@ export function selectEngines(
     })))
   }
 
+  // Vimeo — 视频搜索
+  if (!flags) {
+    engines.push(makeVimeo(makeEngineConfig({
+      name: "vimeo",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // SoundCloud — 音频/音乐搜索
   if (!flags) {
     engines.push(makeSoundCloud(makeEngineConfig({
@@ -316,6 +333,42 @@ export function selectEngines(
   if (!flags) {
     engines.push(makeFlickr(makeEngineConfig({
       name: "flickr",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 豆瓣 — 中文内容搜索（国内直连）
+  if (!flags) {
+    engines.push(makeDouban(makeEngineConfig({
+      name: "douban",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 微博 — 社交媒体搜索（国内直连）
+  if (!flags) {
+    engines.push(makeWeibo(makeEngineConfig({
+      name: "weibo",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Reddit — 社交搜索
+  if (!flags) {
+    engines.push(makeReddit(makeEngineConfig({
+      name: "reddit",
       weight: 0.7,
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
@@ -391,6 +444,8 @@ export function selectEngines(
     // 代码仓库
     engines.push(makeNpm(makeEngineConfig({ name: "npm", weight: 0.7, timeout: 10000, maxResults: 5, requiresKey: false })))
     engines.push(makeDockerHub(makeEngineConfig({ name: "dockerhub", weight: 0.6, timeout: 10000, maxResults: 5, requiresKey: false })))
+    // Q&A
+    engines.push(makeStackExchange(makeEngineConfig({ name: "stackexchange", weight: 0.8, timeout: 10000, maxResults: 5, requiresKey: false })))
   }
 
   // 新闻类查询：添加 Bing News 专用引擎 + 增大 maxResults
