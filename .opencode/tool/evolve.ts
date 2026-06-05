@@ -77,11 +77,13 @@ export default tool({
     // runtime.ts 和 session/prompt.ts 通过 readEvolveMessage() 读取
     // s-temp/.evolve-msg.txt，新窗口启动后自动注入续进消息。
     const prompt = args.message as string
+    // 包 <system-reminder> 标签，让 AI 能区分系统注入与用户实际输入
+    const taggedMsg = `<system-reminder>\n${prompt}\n</system-reminder>`
     try {
       const { writeFileSync, mkdirSync } = await import("fs")
       const evolveDir = pathM.join(worktree, "s-temp")
       mkdirSync(evolveDir, { recursive: true })
-      writeFileSync(pathM.join(evolveDir, ".evolve-msg.txt"), prompt, "utf-8")
+      writeFileSync(pathM.join(evolveDir, ".evolve-msg.txt"), taggedMsg, "utf-8")
     } catch {
       // 写入失败不应阻塞进化
     }
@@ -97,7 +99,19 @@ export default tool({
     }
 
     if (process.platform === "win32") {
-      // Windows: start 新控制台窗口
+      // Windows: start 新控制台窗口，先恢复控制台模式防止终端紊乱
+      try {
+        const { dlopen, ptr } = await import("bun:ffi")
+        const k32 = dlopen("kernel32.dll", {
+          GetStdHandle: { args: ["i32"], returns: "ptr" },
+          GetConsoleMode: { args: ["ptr", "ptr"], returns: "i32" },
+          SetConsoleMode: { args: ["ptr", "u32"], returns: "i32" },
+        })
+        const handle = k32.symbols.GetStdHandle(-10)
+        const modeBuf = new Uint32Array(1)
+        k32.symbols.GetConsoleMode(handle, ptr(modeBuf))
+        k32.symbols.SetConsoleMode(handle, (modeBuf[0]! & ~0x0018) | 0x0007)
+      } catch { /* 非终端环境忽略 */ }
       cp.spawn("cmd.exe", ["/c", "start", "", "cmd", "/c", binary, ...binArgs], {
         detached: true,
         stdio: "ignore",
@@ -126,7 +140,7 @@ export default tool({
       }
     }
 
-    // 4. 自杀
+    // 4. 自杀：跨平台兼容，不依赖特定 shell 命令
     setTimeout(() => process.exit(0), 2000)
 
     return lines.join("\n")

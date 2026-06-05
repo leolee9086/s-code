@@ -12,12 +12,12 @@ import { Reference } from "@/reference/reference"
 const MAX_LINE_LENGTH = 2000
 
 export const Parameters = Schema.Struct({
-  pattern: Schema.String.annotate({ description: "The regex pattern to search for in file contents" }),
+  pattern: Schema.String.annotate({ description: "用于搜索文件内容的正则表达式" }),
   path: Schema.optional(Schema.String).annotate({
-    description: "The directory to search in. Defaults to the current working directory.",
+    description: "要搜索的目录。默认为当前工作目录。",
   }),
   include: Schema.optional(Schema.String).annotate({
-    description: 'File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")',
+    description: '要包含的文件类型模式（例如 "*.js"、"*.{ts,tsx}"）',
   }),
 })
 

@@ -21,10 +21,10 @@ export type Limits = {
 
 export function parameterSchema(description: string) {
   return Schema.Struct({
-    command: Schema.String.annotate({ description: "The command to execute" }),
-    timeout: Schema.optional(PositiveInt).annotate({ description: "Optional timeout in milliseconds" }),
+    command: Schema.String.annotate({ description: "要执行的命令" }),
+    timeout: Schema.optional(PositiveInt).annotate({ description: "可选的超时时间（毫秒）" }),
     workdir: Schema.optional(Schema.String).annotate({
-      description: `The working directory to run the command in. Defaults to the current directory. Use this instead of 'cd' commands.`,
+      description: `运行命令的工作目录。默认为当前目录。使用此参数代替 'cd' 命令。`,
     }),
     description: Schema.String.annotate({ description }),
   })

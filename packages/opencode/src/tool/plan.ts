@@ -31,12 +31,12 @@ export const PlanExitTool = Tool.define(
             sessionID: ctx.sessionID,
             questions: [
               {
-                question: `Plan at ${plan} is complete. Would you like to switch to the build agent and start implementing?`,
-                header: "Build Agent",
+                question: `${plan} 处的计划已完成。是否要切换到构建代理并开始实施？`,
+                header: "构建代理",
                 custom: false,
                 options: [
-                  { label: "Yes", description: "Switch to build agent and start implementing the plan" },
-                  { label: "No", description: "Stay with plan agent to continue refining the plan" },
+                  { label: "是", description: "切换到构建代理并开始实施计划" },
+                  { label: "否", description: "继续停留在计划代理以完善计划" },
                 ],
               },
             ],

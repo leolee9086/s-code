@@ -164,7 +164,7 @@ export const layer = Layer.effect(
           },
           general: {
             name: "general",
-            description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
+            description: `通用代理，用于研究复杂问题和执行多步骤任务。使用此代理并行执行多个工作单元。`,
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
@@ -193,7 +193,7 @@ export const layer = Layer.effect(
               }),
               user,
             ),
-            description: `Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
+            description: `快速代理，专门用于探索代码库。当需要按模式快速查找文件（例如 "src/components/**/*.tsx"）、搜索代码关键字（例如 "API endpoints"）或回答关于代码库的问题（例如 "API endpoints 如何工作？"）时使用。调用此代理时，请指定详细的彻底程度："quick" 用于基本搜索，"medium" 用于中度探索，"very thorough" 用于跨多个位置和命名约定的全面分析。`,
             prompt: PROMPT_EXPLORE,
             options: {},
             mode: "subagent",

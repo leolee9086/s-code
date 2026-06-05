@@ -60,10 +60,10 @@ describe("websearch provider", () => {
   })
 
   test("uses branded labels", () => {
-    expect(webSearchProviderLabel("parallel")).toBe("Parallel Web Search")
-    expect(webSearchProviderLabel("exa")).toBe("Exa Web Search")
-    expect(webSearchProviderLabel("duckduckgo")).toBe("DuckDuckGo Web Search")
-    expect(webSearchProviderLabel(undefined)).toBe("Web Search")
+    expect(webSearchProviderLabel("parallel")).toBe("Parallel 网络搜索")
+    expect(webSearchProviderLabel("exa")).toBe("Exa 网络搜索")
+    expect(webSearchProviderLabel("duckduckgo")).toBe("DuckDuckGo 网络搜索")
+    expect(webSearchProviderLabel(undefined)).toBe("网络搜索")
   })
 
   test("uses the provider API model id for Parallel analytics", () => {

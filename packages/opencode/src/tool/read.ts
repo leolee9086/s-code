@@ -27,15 +27,15 @@ class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
 // Schema output is identical (`type: "number"`), so the LLM view is
 // unchanged; purely CLI-facing uses must now send numbers rather than strings.
 export const Parameters = Schema.Struct({
-  filePath: Schema.String.annotate({ description: "The absolute path to the file or directory to read" }),
+  filePath: Schema.String.annotate({ description: "要读取的文件或目录的绝对路径" }),
   offset: Schema.optional(NonNegativeInt).annotate({
-    description: "The line number to start reading from (1-indexed)",
+    description: "开始读取的行号（从 1 开始计数）",
   }),
   limit: Schema.optional(NonNegativeInt).annotate({
-    description: "The maximum number of lines to read (defaults to 2000)",
+    description: "最多读取的行数（默认 2000）",
   }),
   includeMeta: Schema.optional(Schema.Boolean).annotate({
-    description: "Return file metadata (mtime, size, line count) as JSON prefix. Default false.",
+    description: "返回文件元数据（mtime、大小、行数）作为 JSON 前缀。默认 false。",
   }),
 })
 

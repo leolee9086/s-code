@@ -45,19 +45,19 @@ function lock(filePath: string) {
 }
 
 export const Parameters = Schema.Struct({
-  filePath: Schema.String.annotate({ description: "The absolute path to the file to modify" }),
-  oldString: Schema.String.annotate({ description: "The text to replace" }),
+  filePath: Schema.String.annotate({ description: "要修改文件的绝对路径" }),
+  oldString: Schema.String.annotate({ description: "要替换的文本" }),
   newString: Schema.String.annotate({
-    description: "The text to replace it with (must be different from oldString)",
+    description: "替换后的文本（必须与 oldString 不同）",
   }),
   replaceAll: Schema.optional(Schema.Boolean).annotate({
-    description: "Replace all occurrences of oldString (default false)",
+    description: "替换所有匹配的 oldString（默认 false）",
   }),
   mtime: Schema.Number.annotate({
-    description: "File mtime (ms) from prior Read. Use 0 for new files (oldString=\"\").",
+    description: "文件 mtime（毫秒），从 Read(includeMeta:true) 获取。新文件（oldString=\"\"）填 0。",
   }),
   proof: Schema.String.annotate({
-    description: "Non-empty lines from file as proof of current content. Use empty string for new files (oldString=\"\").",
+    description: "文件中用于证明当前内容的非空行。新文件（oldString=\"\"）填空字符串。",
   }),
 })
 

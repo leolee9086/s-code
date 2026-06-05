@@ -34,14 +34,14 @@ const BACKGROUND_DESCRIPTION = [
 ].join("\n")
 
 const BaseParameterFields = {
-  description: Schema.String.annotate({ description: "A short (3-5 words) description of the task" }),
-  prompt: Schema.String.annotate({ description: "The task for the agent to perform" }),
-  subagent_type: Schema.String.annotate({ description: "The type of specialized agent to use for this task" }),
+  description: Schema.String.annotate({ description: "任务的简短描述（3-5 个词）" }),
+  prompt: Schema.String.annotate({ description: "代理要执行的任务" }),
+  subagent_type: Schema.String.annotate({ description: "要使用的专业代理类型" }),
   task_id: Schema.optional(Schema.String).annotate({
     description:
-      "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
+      "仅当你要恢复之前的任务时才设置此项（传入先前的 task_id 可继续同一子代理会话，而非创建新会话）",
   }),
-  command: Schema.optional(Schema.String).annotate({ description: "The command that triggered this task" }),
+  command: Schema.optional(Schema.String).annotate({ description: "触发此任务的命令" }),
 }
 
 const BaseParameters = Schema.Struct(BaseParameterFields)
@@ -49,7 +49,7 @@ const BaseParameters = Schema.Struct(BaseParameterFields)
 export const Parameters = Schema.Struct({
   ...BaseParameterFields,
   background: Schema.optional(Schema.Boolean).annotate({
-    description: "Run the agent in the background. You will be notified when it completes.",
+    description: "在后台运行代理。完成后会收到通知。",
   }),
 })
 

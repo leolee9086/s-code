@@ -9,19 +9,19 @@ import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
 export const Parameters = Schema.Struct({
-  query: Schema.String.annotate({ description: "Websearch query" }),
+  query: Schema.String.annotate({ description: "网络搜索查询词" }),
   numResults: Schema.optional(Schema.Number).annotate({
-    description: "Number of search results to return (default: 8)",
+    description: "返回的搜索结果数量（默认 8）",
   }),
   livecrawl: Schema.optional(Schema.Literals(["fallback", "preferred"])).annotate({
     description:
-      "Live crawl mode - 'fallback': use live crawling as backup if cached content unavailable, 'preferred': prioritize live crawling (default: 'fallback')",
+      "实时爬取模式 - 'fallback'：缓存内容不可用时作为后备使用实时爬取，'preferred'：优先实时爬取（默认 'fallback'）",
   }),
   type: Schema.optional(Schema.Literals(["auto", "fast", "deep"])).annotate({
-    description: "Search type - 'auto': balanced search (default), 'fast': quick results, 'deep': comprehensive search",
+    description: "搜索类型 - 'auto'：均衡搜索（默认），'fast'：快速结果，'deep'：深度搜索",
   }),
   contextMaxCharacters: Schema.optional(Schema.Number).annotate({
-    description: "Maximum characters for context string optimized for LLMs (default: 10000)",
+    description: "为 LLM 优化的上下文字符数上限（默认 10000）",
   }),
 })
 
@@ -49,10 +49,10 @@ export function selectWebSearchProvider(sessionID: string, flags = { exa: false,
 }
 
 export function webSearchProviderLabel(provider: unknown) {
-  if (provider === "parallel") return "Parallel Web Search"
-  if (provider === "exa") return "Exa Web Search"
-  if (provider === "duckduckgo") return "DuckDuckGo Web Search"
-  return "Web Search"
+  if (provider === "parallel") return "Parallel 网络搜索"
+  if (provider === "exa") return "Exa 网络搜索"
+  if (provider === "duckduckgo") return "DuckDuckGo 网络搜索"
+  return "网络搜索"
 }
 
 export function webSearchModelName(extra: Tool.Context["extra"]) {
@@ -78,7 +78,7 @@ function formatDuckDuckGoResults(results: DuckDuckGo.DuckDuckGoResult[], query: 
     (r, i) =>
       `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet ?? ""}`,
   )
-  return [`DuckDuckGo search results for "${query}":`, ...lines].join("\n\n")
+  return [`DuckDuckGo 搜索 "${query}" 的结果：`, ...lines].join("\n\n")
 }
 
 function callProvider(
@@ -165,14 +165,14 @@ export const WebSearchTool = Tool.define(
           // 验证提供商是否真的可用（DuckDuckGo 始终可用，无需 key）
           if (!providerAvailable(provider)) {
             const hint = provider === "exa"
-              ? "EXA_API_KEY environment variable is not set."
-              : "PARALLEL_API_KEY environment variable is not set."
+              ? "EXA_API_KEY 环境变量未设置。"
+              : "PARALLEL_API_KEY 环境变量未设置。"
             return {
-              output: `Web search (${provider}) is not available: ${hint} `
-                + "Configure it in your environment, or switch to the built-in "
-                + "DuckDuckGo search which works without any API key. "
-                + "As a fallback, use the webfetch tool to fetch specific URLs directly.",
-              title: "Web Search Unavailable",
+              output: `网络搜索 (${provider}) 不可用：${hint} `
+                + "请配置环境变量，或切换到内置的 "
+                + "DuckDuckGo 搜索（无需 API key）。"
+                + "作为备用，可以直接使用 webfetch 工具获取指定 URL 的内容。",
+              title: "网络搜索不可用",
               metadata: { provider, available: false },
             }
           }
@@ -180,7 +180,7 @@ export const WebSearchTool = Tool.define(
           const result = yield* callProvider(http, provider, params, ctx)
 
           return {
-            output: result ?? "No search results found. Please try a different query.",
+            output: result ?? "未找到搜索结果。请尝试其他查询词。",
             title: `${title}: ${params.query}`,
             metadata: { provider, available: true },
           }

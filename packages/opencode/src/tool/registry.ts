@@ -313,10 +313,10 @@ export const layer: Layer.Layer<
       const description = list
         .map(
           (item) =>
-            `- ${item.name}: ${item.description ?? "This subagent should only be called manually by the user."}`,
+            `- ${item.name}: ${item.description ?? "此子代理只能由用户手动调用。"}`,
         )
         .join("\n")
-      return ["Available agent types and the tools they have access to:", description].join("\n")
+      return ["可用的代理类型及其拥有的工具：", description].join("\n")
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {

@@ -1,18 +1,17 @@
-- Fetches content from a specified URL
-- Takes a URL and optional format as input
-- Fetches the URL content, converts to requested format (markdown by default)
-- Returns the content in the specified format
-- Use this tool when you need to retrieve and analyze web content
+- 从指定 URL 获取内容
+- 接收 URL 和可选格式参数
+- 获取 URL 内容，并按请求格式（默认 markdown）返回
+- 以指定格式返回获取的内容
+- 当你需要检索和分析网页内容时使用此工具
 
-Usage notes:
-  - IMPORTANT: if another tool is present that offers better web fetching capabilities, is more targeted to the task, or has fewer restrictions, prefer using that tool instead of this one.
-  - The URL must be a fully-formed valid URL starting with http:// or https://
-  - Format options: "markdown" (default), "text", or "html"
-    - "markdown": HTML pages are converted to Markdown (best for reading article content)
-    - "text": HTML pages are stripped to plain text (best for LLM consumption)
-    - "html": Raw HTML is returned as-is (use when you need to inspect the full markup)
-  - Images are returned as base64-encoded file attachments
-  - Fetch results are cached in memory for 60 seconds to avoid duplicate network requests
-  - Timeout defaults to 30 seconds, configurable up to 120 seconds
-  - Maximum response size is 5MB
-  - HTTP URLs are automatically upgraded to HTTPS
+使用说明：
+  - 重要：如果其他工具能提供更好的网页获取能力、更针对当前任务或限制更少，请优先使用其他工具
+  - URL 必须是完整的有效 URL，以 http:// 或 https:// 开头
+  - 格式选项："markdown"（默认）、"text"、"html"
+    - "markdown"：HTML 页面转换为 Markdown（最适合阅读文章内容）
+    - "text"：HTML 页面剥离为纯文本（最适合 LLM 消费）
+    - "html"：返回原始 HTML（当需要检查完整标记时使用）
+  - 图片以 base64 编码的文件附件形式返回
+  - 获取结果在内存中缓存 60 秒，避免重复网络请求
+  - 超时默认为 30 秒，最长可设置为 120 秒
+  - 最大响应大小为 5MB

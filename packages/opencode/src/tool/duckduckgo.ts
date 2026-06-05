@@ -1,11 +1,11 @@
 /**
  * DuckDuckGo 搜索适配器
  *
- * 使用 DuckDuckGo 的公开 JSON API（需先获取 vqd token）：
- * 1. GET https://duckduckgo.com/?q=<query>  → 提取 vqd token
- * 2. GET https://links.duckduckgo.com/d.js   → 返回 JSON 格式的搜索结果
- *
- * 参考：https://github.com/deedy5/duckduckgo_search（Python SDK 的相同流程）
+ * 搜索策略优先级（由高到低）：
+ * 1. HTML 端点解析（html.duckduckgo.com/html）——最稳定可靠，无需 token
+ * 2. VQD/JSON API（links.duckduckgo.com/d.js）——数据结构化程度最高
+ * 3. Lite 端点（lite.duckduckgo.com/lite）——HTML 最简单
+ * 4. 正则表达式兜底提取
  */
 
 import { Effect, Schedule } from "effect"
@@ -23,31 +23,92 @@ const REGEX_STRIP_TAGS = /<[^>]*>/g
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 
-/** DuckDuckGo 搜索——使用 JSON API 获取结构化结果 */
+/** DuckDuckGo 搜索——多策略兜底 */
 export function search(
   http: HttpClient.HttpClient,
   query: string,
   numResults: number = 8,
 ): Effect.Effect<DuckDuckGoResult[], unknown, never> {
   return Effect.gen(function* () {
-    // 1. 获取 VQD token——DuckDuckGo 用于验证的令牌
-    // 如果首次失败，重试最多 2 次（DuckDuckGo 偶尔会限制首次请求）
+    // 策略 1: HTML 端点（最稳定，无 VQD 依赖）
+    const htmlResults = yield* searchHtml(http, query, numResults)
+    if (htmlResults.length > 0) return htmlResults
+
+    // 策略 2: VQD/JSON API（更好结构的数据）
     const vqd = yield* getVqd(http, query).pipe(
-      Effect.retry(Schedule.recurs(2)),
+      Effect.retry(Schedule.recurs(1)),
     )
-    if (!vqd) {
-      // VQD 获取失败，回退到 HTML 解析
-      const fallback = yield* searchHtml(http, query, numResults)
-      return fallback
+    if (vqd) {
+      const jsonResults = yield* searchJson(http, query, vqd, numResults)
+      if (jsonResults.length > 0) return jsonResults
     }
 
-    // 2. 用 VQD token 请求 JSON 搜索结果
+    // 策略 3: Lite 端点（最简单的 HTML）
+    const liteResults = yield* searchLite(http, query, numResults)
+    if (liteResults.length > 0) return liteResults
+
+    return []
+  })
+}
+
+/**
+ * 获取 VQD token——DuckDuckGo 的反爬验证令牌
+ * 从 HTML 首页中提取 vqd="..." 或 vqd=...& 或 vqd='...'
+ */
+function getVqd(http: HttpClient.HttpClient, query: string): Effect.Effect<string | undefined, unknown, never> {
+  return Effect.gen(function* () {
+    const response = yield* http
+      .execute(
+        HttpClientRequest.get(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`).pipe(
+          HttpClientRequest.setHeaders({
+            "User-Agent": USER_AGENT,
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+          }),
+        ),
+      )
+      .pipe(Effect.timeout("15 seconds"))
+
+    // 允许非 200 状态（DDG 可能返回 403/429 但仍然有内容）
+    const status = response.status
+    if (status < 200 || status >= 400) return undefined
+
+    const html: string = yield* response.text
+
+    // 尝试多种 vqd token 的提取模式
+    const patterns = [
+      /vqd\s*=\s*"([^"]+)"/,
+      /vqd\s*=\s*'([^']+)'/,
+      /vqd\s*=\s*([^&\s"'})]+)/,
+    ]
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern)
+      if (match?.[1]) return match[1]
+    }
+
+    return undefined
+  })
+}
+
+/**
+ * 通过 JSON API 搜索（需要 VQD token）
+ * URL: https://links.duckduckgo.com/d.js?q=...&kl=wt-wt&l=wt-wt&s=0&vqd=...&o=json&sp=0&ex=-1
+ */
+function searchJson(
+  http: HttpClient.HttpClient,
+  query: string,
+  vqd: string,
+  numResults: number,
+): Effect.Effect<DuckDuckGoResult[], unknown, never> {
+  return Effect.gen(function* () {
     // DuckDuckGo 的分页偏移量：0, 20, 70, 120
     const searchPositions = ["0", "20", "70", "120"]
     const results: DuckDuckGoResult[] = []
+
     for (const s of searchPositions) {
       if (results.length >= numResults) break
-      const page = yield* searchPage(http, query, vqd, s)
+      const page = yield* searchJsonPage(http, query, vqd, s)
       for (const row of page) {
         if (results.length >= numResults) break
         if (row.url && !results.some((r) => r.url === row.url)) {
@@ -61,50 +122,9 @@ export function search(
 }
 
 /**
- * 获取 VQD token——DuckDuckGo 的反爬验证令牌
- * 从 HTML 首页中提取 vqd="..." 或 vqd=...& 或 vqd='...'
- */
-function getVqd(http: HttpClient.HttpClient, query: string): Effect.Effect<string | undefined, unknown, never> {
-  return Effect.gen(function* () {
-    const request = HttpClientRequest.get(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`).pipe(
-      HttpClientRequest.setHeaders({
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      }),
-    )
-
-    const response = yield* HttpClient.filterStatusOk(http).execute(request).pipe(
-      Effect.timeout("15 seconds"),
-    )
-
-    const html: string = yield* response.text
-
-    // 尝试多种 vqd token 的提取模式
-    // DuckDuckGo HTML 中通常形如: var vqd = "abc123" 或 vqd="abc123"
-    // 也检查 URL 参数中的 vqd（某些版本在重定向 URL 中携带）
-    const patterns = [
-      /vqd\s*=\s*"([^"]+)"/,
-      /vqd\s*=\s*'([^']+)'/,
-      /vqd\s*=\s*([^&\s"'})]+)/,
-    ]
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern)
-      if (match?.[1]) {
-        return match[1]
-      }
-    }
-
-    return undefined
-  })
-}
-
-/**
  * 请求一页 JSON 格式的搜索结果
- * URL: https://links.duckduckgo.com/d.js?q=...&kl=wt-wt&l=wt-wt&s=0&vqd=...&o=json&sp=0&ex=-1
  */
-function searchPage(
+function searchJsonPage(
   http: HttpClient.HttpClient,
   query: string,
   vqd: string,
@@ -121,25 +141,24 @@ function searchPage(
       vqd,
       o: "json",
       sp: "0",
-      ex: "-1", // moderate safesearch
+      ex: "-1",
     })
 
+    const response = yield* http
+      .execute(
+        HttpClientRequest.get(`${url}?${params.toString()}`).pipe(
+          HttpClientRequest.setHeaders({
+            "User-Agent": USER_AGENT,
+            Accept: "application/json, text/plain, */*",
+            Referer: "https://duckduckgo.com/",
+          }),
+        ),
+      )
+      .pipe(Effect.timeout("15 seconds"))
 
-    const request = HttpClientRequest.get(`${url}?${params.toString()}`).pipe(
-      HttpClientRequest.setHeaders({
-        "User-Agent": USER_AGENT,
-        Accept: "application/json, text/plain, */*",
-        Referer: "https://duckduckgo.com/",
-      }),
-    )
-
-    const response = yield* HttpClient.filterStatusOk(http).execute(request).pipe(
-      Effect.timeout("15 seconds"),
-    )
+    if (response.status < 200 || response.status >= 400) return []
 
     const text: string = yield* response.text
-
-    // 尝试解析 JSON
     let data: any
     try {
       data = JSON.parse(text)
@@ -172,8 +191,8 @@ function searchPage(
 }
 
 /**
- * 回退方案：解析 DuckDuckGo 的公开 HTML 页面
- * 当 VQD token 获取失败时使用
+ * 主方案：解析 DuckDuckGo 的公开 HTML 搜索结果页
+ * URL: https://html.duckduckgo.com/html/?q=<query>
  */
 function searchHtml(
   http: HttpClient.HttpClient,
@@ -182,28 +201,111 @@ function searchHtml(
 ): Effect.Effect<DuckDuckGoResult[], unknown, never> {
   return Effect.gen(function* () {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
-    const request = HttpClientRequest.get(url).pipe(
-      HttpClientRequest.setHeaders({
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      }),
-    )
+    const response = yield* http
+      .execute(
+        HttpClientRequest.get(url).pipe(
+          HttpClientRequest.setHeaders({
+            "User-Agent": USER_AGENT,
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+          }),
+        ),
+      )
+      .pipe(Effect.timeout("15 seconds"))
 
-    const response = yield* HttpClient.filterStatusOk(http).execute(request).pipe(
-      Effect.timeout("15 seconds"),
-    )
+    if (response.status < 200 || response.status >= 400) return []
 
     const html: string = yield* response.text
     const results = parseHtmlResults(html, numResults)
 
     if (results.length === 0) {
-      const fallback = fallbackExtract(html, numResults)
-      return fallback
+      return fallbackExtract(html, numResults)
     }
 
     return results
   })
+}
+
+/**
+ * 兜底方案：解析 DuckDuckGo Lite 搜索结果页
+ * URL: https://lite.duckduckgo.com/lite/?q=<query>
+ *
+ * Lite 端点的 HTML 结构极其简单：
+ * - 结果行在 <table> 中
+ * - 每行第一个 <a> 是标题 + 链接
+ * - 第二个 <a> 是摘要
+ */
+function searchLite(
+  http: HttpClient.HttpClient,
+  query: string,
+  numResults: number,
+): Effect.Effect<DuckDuckGoResult[], unknown, never> {
+  return Effect.gen(function* () {
+    const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`
+    const response = yield* http
+      .execute(
+        HttpClientRequest.get(url).pipe(
+          HttpClientRequest.setHeaders({
+            "User-Agent": USER_AGENT,
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+          }),
+        ),
+      )
+      .pipe(Effect.timeout("15 seconds"))
+
+    if (response.status < 200 || response.status >= 400) return []
+
+    const html: string = yield* response.text
+    return parseLiteResults(html, numResults)
+  })
+}
+
+/**
+ * 解析 DuckDuckGo Lite 搜索结果
+ * Lite 页面使用简单的表格布局：
+ * <div class="result">
+ *   <a href="...">标题</a>
+ *   <span class="snippet">摘要</span>
+ * </div>
+ * 或者 <table><tr><td>...
+ */
+export function parseLiteResults(html: string, maxResults: number): DuckDuckGoResult[] {
+  const results: DuckDuckGoResult[] = []
+  const seen = new Set<string>()
+
+  // 尝试表格模式（传统 lite 布局）
+  const tableRegex = /<tr[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class="[^"]*snippet[^"]*"[^>]*>([\s\S]*?)<\/td>/gi
+  let match: RegExpExecArray | null
+  while ((match = tableRegex.exec(html)) !== null) {
+    if (results.length >= maxResults) break
+    const url = extractRedirectUrl(match[1])
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    results.push({
+      title: stripHtml(match[2]),
+      url,
+      snippet: stripHtml(match[3]),
+    })
+  }
+
+  if (results.length > 0) return results
+
+  // 尝试 div 模式（新版 lite 布局）
+  const divRegex = /<div[^>]*class="[^"]*\bresult\b[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<span[^>]*class="[^"]*snippet[^"]*"[^>]*>([\s\S]*?)<\/span>/gi
+  while ((match = divRegex.exec(html)) !== null) {
+    if (results.length >= maxResults) break
+    const url = extractRedirectUrl(match[1])
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    results.push({
+      title: stripHtml(match[2]),
+      url,
+      snippet: stripHtml(match[3]),
+    })
+  }
+
+  return results
 }
 
 /**

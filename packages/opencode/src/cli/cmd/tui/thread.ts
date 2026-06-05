@@ -203,6 +203,13 @@ export const TuiThreadCommand = cmd({
       process.on("unhandledRejection", error)
       process.on("SIGUSR2", reload)
 
+      // Worker 意外退出（如 evolve tool 中的 process.exit）触发线程退出。
+      // 先恢复控制台模式再退出，与 Ctrl+C 行为一致。
+      worker.addEventListener("exit", () => {
+        unguard?.()
+        process.exit(0)
+      })
+
       let stopped = false
       const stop = async () => {
         if (stopped) return
@@ -217,6 +224,12 @@ export const TuiThreadCommand = cmd({
         })
         worker.terminate()
       }
+
+      // Worker 意外退出（如 evolve tool 调用 process.exit）时触发退出流程，
+      // 行为和 Ctrl+C 一致
+      worker.addEventListener("exit", () => {
+        if (!stopped) stop()
+      })
 
       const prompt = await input(args.prompt)
 
