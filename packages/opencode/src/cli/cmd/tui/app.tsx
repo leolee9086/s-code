@@ -500,9 +500,9 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
   })
 
-  // session 未找到时，弹出 session 选择列表并显示警告
+  // session 未找到时，等 TUI 完全就绪后弹出 session 选择列表
   createEffect(() => {
-    if (!args.sessionNotFound) return
+    if (!ready() || !args.sessionNotFound) return
     toast.show({
       variant: "warning",
       message: `未找到 session: ${args.sessionNotFound}。二进制 channel 可能不对，sessionID 可能错误。`,

@@ -1551,7 +1551,7 @@ export const layer = Layer.effect(
               }
             }
 
-            if (result === "stop" && isEvolveMode() && !session.parentID) {
+            if (isEvolveMode() && !session.parentID && (result === "continue" || result === "stop")) {
               // 进化模式：仅当最后一条 user message 是系统合成时才强制继续
               const lastUserMsg = msgs.findLast(
                 (m) => m.info.role === "user" && m.info.id === lastUser.id,

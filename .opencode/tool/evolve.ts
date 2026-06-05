@@ -29,7 +29,25 @@ export default tool({
     const pkgDir = pathM.join(worktree, "packages", "opencode")
     const pkgJson = JSON.parse(readFileSync(pathM.join(pkgDir, "package.json"), "utf-8"))
     const binDir = binaryDirname(pkgJson.name)
-    const binary = pathM.join(pkgDir, "dist", binDir, "bin", `opencode${process.platform === "win32" ? ".exe" : ""}`)
+
+    // 自构建场景（进程运行在 dist-tick/ 或 dist-toc/ 下）：
+    // build.ts 的 rm -rf 和覆写二进制在 Windows 上会因为 EXE 运行中而失败。
+    // evolve 交替使用 dist-tick / dist-toc 两个固定目录，
+    // 用 --binary-suffix <sessionId> 区分不同 session 的文件名。
+    // 同目录下文件名不同，多个 session 可同时 evolve 不冲突。
+    // dist（无后缀）保留给正常构建（build_opencode / build_and_deploy_opencode）。
+    const sessionId = ctx?.sessionID ?? "default"
+    const execPath = process.execPath?.replace(/\\/g, "/") ?? ""
+    const normSep = (p: string) => p.replace(/\\/g, "/")
+    const knownDirs = ["dist-tick", "dist-toc"]
+    const currentDir = knownDirs.find(d => {
+      const dir = normSep(pathM.join(pkgDir, d))
+      return execPath.startsWith(dir)
+    })
+    const distOutDir = currentDir
+      ? knownDirs.find(d => d !== currentDir)!
+      : "dist-tick"
+    const binary = pathM.join(pkgDir, distOutDir, binDir, "bin", `opencode-${sessionId}${process.platform === "win32" ? ".exe" : ""}`)
 
     const lines: string[] = []
 
@@ -43,9 +61,11 @@ export default tool({
     }
 
     // 2. 构建
+    // --binary-suffix <sessionId> 输出独特文件名，不冲突；--outdir 切换目录避免覆写运行中的 exe
     lines.push("▶ 构建...")
+    const buildArgs = ["run", "build", "--single", "--skip-install", "--skip-embed-web-ui", "--outdir", distOutDir, "--binary-suffix", sessionId]
     try {
-      await $`bun run build --single --skip-install --skip-embed-web-ui`.cwd(pkgDir).quiet()
+      await $`bun ${buildArgs}`.cwd(pkgDir).quiet()
       lines.push("   ✓ 构建成功")
     } catch (e: any) {
       return `构建失败，进化中止:\n${e.stderr?.toString() ?? e.message ?? String(e)}`
@@ -53,10 +73,19 @@ export default tool({
 
     lines.push(`▶ 版本: v${pkgJson.version}`)
 
-    // 3. 启动新窗口
-    // 用 --prompt 直传递进消息，避免文件读写竞态
-    const sessionId = ctx?.sessionID
+    // 3. 写入续进消息到文件协议
+    // runtime.ts 和 session/prompt.ts 通过 readEvolveMessage() 读取
+    // s-temp/.evolve-msg.txt，新窗口启动后自动注入续进消息。
     const prompt = args.message as string
+    try {
+      const { writeFileSync, mkdirSync } = await import("fs")
+      const evolveDir = pathM.join(worktree, "s-temp")
+      mkdirSync(evolveDir, { recursive: true })
+      writeFileSync(pathM.join(evolveDir, ".evolve-msg.txt"), prompt, "utf-8")
+    } catch {
+      // 写入失败不应阻塞进化
+    }
+
     const channel = ctx.channel
     const binArgs = sessionId
       ? ["-s", sessionId, "--prompt", prompt, "--channel", channel]

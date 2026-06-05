@@ -23,6 +23,17 @@ const skipInstall = process.argv.includes("--skip-install")
 const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
+const outdirFlag = (() => {
+  const idx = process.argv.indexOf("--outdir")
+  if (idx === -1 || idx + 1 >= process.argv.length) return null
+  return process.argv[idx + 1]
+})()
+const binarySuffixFlag = (() => {
+  const idx = process.argv.indexOf("--binary-suffix")
+  if (idx === -1 || idx + 1 >= process.argv.length) return null
+  return process.argv[idx + 1]
+})()
+const distDir = outdirFlag ?? "dist"
 
 const createEmbeddedWebUIBundle = async () => {
   console.log(`Building Web UI to embed in the binary`)
@@ -134,7 +145,14 @@ const targets = singleFlag
     })
   : allTargets
 
-await $`rm -rf dist`
+// --binary-suffix 附加到输出文件名（不含扩展名，Bun 自动处理 .exe）
+const binarySuffix = binarySuffixFlag ? `-${binarySuffixFlag}` : ""
+// 有 suffix（evolve 模式）：dist-tick/dist-toc 内可能有其他 session 的二进制，
+// 不能 rm -rf。Bun.build() 覆写同名文件，旧文件不累积。
+// 无 suffix（正常构建）：全量清理。
+if (!binarySuffixFlag) {
+  await $`rm -rf ${distDir}`
+}
 
 const binaries: Record<string, string> = {}
 if (!skipInstall) {
@@ -153,7 +171,8 @@ for (const item of targets) {
     .filter(Boolean)
     .join("-")
   console.log(`building ${name}`)
-  await $`mkdir -p dist/${name}/bin`
+  await $`mkdir -p ${distDir}/${name}/bin`
+  const outfileName = `opencode${binarySuffix}`
 
   const localPath = path.resolve(dir, "node_modules/@opentui/core/parser.worker.js")
   const rootPath = path.resolve(dir, "../../node_modules/@opentui/core/parser.worker.js")
@@ -179,7 +198,7 @@ for (const item of targets) {
       autoloadTsconfig: true,
       autoloadPackageJson: true,
       target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/opencode`,
+      outfile: `${distDir}/${name}/bin/${outfileName}`,
       execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
@@ -197,7 +216,7 @@ for (const item of targets) {
 
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi) {
-    const binaryPath = `dist/${name}/bin/opencode`
+    const binaryPath = `${distDir}/${name}/bin/${outfileName}`
     console.log(`Running smoke test: ${binaryPath} --version`)
     try {
       const versionOutput = await $`${binaryPath} --version`.text()
@@ -208,8 +227,8 @@ for (const item of targets) {
     }
   }
 
-  await $`rm -rf ./dist/${name}/bin/tui`
-  await Bun.file(`dist/${name}/package.json`).write(
+  await $`rm -rf ./${distDir}/${name}/bin/tui`
+  await Bun.file(`${distDir}/${name}/package.json`).write(
     JSON.stringify(
       {
         name,
@@ -228,12 +247,12 @@ for (const item of targets) {
 if (Script.release) {
   for (const key of Object.keys(binaries)) {
     if (key.includes("linux")) {
-      await $`tar -czf ../../${key}.tar.gz *`.cwd(`dist/${key}/bin`)
+      await $`tar -czf ../../${key}.tar.gz *`.cwd(`${distDir}/${key}/bin`)
     } else {
-      await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
+      await $`zip -r ../../${key}.zip *`.cwd(`${distDir}/${key}/bin`)
     }
   }
-  await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
+  await $`gh release upload v${Script.version} ./${distDir}/*.zip ./${distDir}/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
 }
 
 export { binaries }
