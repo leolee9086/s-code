@@ -2,11 +2,10 @@ import { Effect, Schema } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import * as Tool from "./tool"
 import * as McpWebSearch from "./mcp-websearch"
-import * as DuckDuckGo from "./duckduckgo"
 import DESCRIPTION from "./websearch.txt"
-import { checksum } from "@opencode-ai/core/util/encode"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { Search } from "@/search"
 
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "网络搜索查询词" }),
@@ -44,11 +43,14 @@ export function selectWebSearchProvider(sessionID: string, flags = { exa: false,
   if (flags.parallel) return "parallel"
   if (flags.exa) return "exa"
 
-  // 默认使用 DuckDuckGo（免费、零配置）
+  // 默认使用 DuckDuckGo（免费、零配置），将触发多引擎聚合模式
   return "duckduckgo"
 }
 
 export function webSearchProviderLabel(provider: unknown) {
+  if (typeof provider === "string" && provider.includes("+")) {
+    return `多引擎搜索 (${provider})`
+  }
   if (provider === "parallel") return "Parallel 网络搜索"
   if (provider === "exa") return "Exa 网络搜索"
   if (provider === "duckduckgo") return "DuckDuckGo 网络搜索"
@@ -70,15 +72,70 @@ function parallelAuthHeaders() {
   return { ...headers, Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` }
 }
 
-/** 格式化 DuckDuckGo 结果为统一文本 */
-function formatDuckDuckGoResults(results: DuckDuckGo.DuckDuckGoResult[], query: string): string {
-  if (results.length === 0) return ""
+/**
+ * 多引擎搜索模式
+ *
+ * 借鉴 SearXNG 的元搜索引擎架构：
+ * 1. 结果缓存命中直接返回（避免重复搜索相同关键词）
+ * 2. 并发执行多个搜索引擎
+ * 3. 结果去重合并（URL 规范化 + 标题相似度）
+ * 4. 加权评分（位置 × 引擎权重）
+ * 5. 域名多样性保证
+ * 6. 引擎健康状态跨调用持久化（熔断器）
+ */
+function callMultiEngine(
+  http: HttpClient.HttpClient,
+  params: Schema.Schema.Type<typeof Parameters>,
+  flags: { exa: boolean; parallel: boolean },
+): Effect.Effect<{ output: string | undefined; engines: readonly string[] }> {
+  return Effect.gen(function* () {
+    const engines = Search.Selector.selectEngines({
+      brave: !!process.env.BRAVE_API_KEY,
+      xiaohongshu: true,
+      zhihu: true,
+      exa: flags.exa,
+      parallel: flags.parallel,
+    })
+    if (engines.length === 0) return { output: undefined, engines: [] }
 
-  const lines = results.map(
-    (r, i) =>
-      `${i + 1}. ${r.title}\n   URL: ${r.url}\n   ${r.snippet ?? ""}`,
-  )
-  return [`DuckDuckGo 搜索 "${query}" 的结果：`, ...lines].join("\n\n")
+    const numResults = params.numResults || 8
+    const cacheKey = Search.Cache.ResultCache.makeKey(params.query, numResults)
+
+    // 检查缓存
+    const cached = Search.Cache.globalResultCache.get(cacheKey)
+    if (cached && cached.length > 0) {
+      const engineNames = [...new Set(cached.map(r => r.engine))]
+      const aggregated = Search.Aggregator.aggregate(cached, {
+        weights: new Map(engines.map(e => [e.name, e.config.weight])),
+        maxResults: numResults,
+      })
+      const output = Search.Aggregator.formatResults(aggregated, params.query)
+      return { output, engines: engineNames }
+    }
+
+    // 使用全局引擎健康状态（跨调用持久化）
+    const state = Search.Executor.getGlobalState()
+    const opts = Search.Engine.makeSearchOptions({ numResults })
+    const execResult = yield* Search.Executor.executeAll(engines, http, params.query, opts, state)
+
+    // 缓存成功结果
+    if (execResult.results.length > 0) {
+      Search.Cache.globalResultCache.set(cacheKey, execResult.results)
+    }
+
+    const weights = new Map(engines.map(e => [e.name, e.config.weight]))
+    const aggregated = Search.Aggregator.aggregate(execResult.results, {
+      weights,
+      maxResults: numResults,
+    })
+
+    const engineNames = [...new Set(execResult.results.map(r => r.engine))]
+    const output = aggregated.length > 0
+      ? Search.Aggregator.formatResults(aggregated, params.query)
+      : undefined
+
+    return { output, engines: engineNames }
+  })
 }
 
 function callProvider(
@@ -88,10 +145,10 @@ function callProvider(
   ctx: Tool.Context,
 ) {
   if (provider === "duckduckgo") {
+    // DuckDuckGo → 多引擎聚合模式（DuckDuckGo + Brave 等并行搜索）
     return Effect.gen(function* () {
-      const results = yield* DuckDuckGo.search(http, params.query, params.numResults || 8)
-      if (results.length === 0) return undefined
-      return formatDuckDuckGoResults(results, params.query)
+      const result = yield* callMultiEngine(http, params, { exa: false, parallel: false })
+      return { output: result.output, engines: result.engines }
     })
   }
 
@@ -109,7 +166,7 @@ function callProvider(
       },
       "25 seconds",
       parallelAuthHeaders(),
-    )
+    ).pipe(Effect.map((output) => ({ output, engines: ["parallel"] as readonly string[] })))
   }
 
   return McpWebSearch.call(
@@ -125,7 +182,7 @@ function callProvider(
       contextMaxCharacters: params.contextMaxCharacters,
     },
     "25 seconds",
-  )
+  ).pipe(Effect.map((output) => ({ output, engines: ["exa"] as readonly string[] })))
 }
 
 export const WebSearchTool = Tool.define(
@@ -173,16 +230,16 @@ export const WebSearchTool = Tool.define(
                 + "DuckDuckGo 搜索（无需 API key）。"
                 + "作为备用，可以直接使用 webfetch 工具获取指定 URL 的内容。",
               title: "网络搜索不可用",
-              metadata: { provider, available: false },
+              metadata: { provider, available: false, engines: [] as readonly string[] },
             }
           }
 
-          const result = yield* callProvider(http, provider, params, ctx)
+          const { output, engines } = yield* callProvider(http, provider, params, ctx)
 
           return {
-            output: result ?? "未找到搜索结果。请尝试其他查询词。",
+            output: output ?? "未找到搜索结果。请尝试其他查询词。",
             title: `${title}: ${params.query}`,
-            metadata: { provider, available: true },
+            metadata: { provider, available: true, engines },
           }
         }).pipe(Effect.orDie),
     }

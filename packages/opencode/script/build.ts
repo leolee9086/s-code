@@ -147,9 +147,10 @@ const targets = singleFlag
 
 // --binary-suffix 附加到输出文件名（不含扩展名，Bun 自动处理 .exe）
 const binarySuffix = binarySuffixFlag ? `-${binarySuffixFlag}` : ""
-// 有 suffix（evolve 模式）：dist-tick/dist-toc 内可能有其他 session 的二进制，
-// 不能 rm -rf。Bun.build() 覆写同名文件，旧文件不累积。
-// 无 suffix（正常构建）：全量清理。
+// 无 suffix（正常构建输出到 dist/）：全量清理
+// 有 suffix（evolve 输出到 dist-tick/toc）：跳过 rm -rf，因为 Windows 上
+// 目标目录内可能有其他实例正在运行的 EXE，rm -rf 一定会失败（EPERM）。
+// 唯一文件名 + mkdir -p + 覆写足够保证每次构建正确输出。
 if (!binarySuffixFlag) {
   await $`rm -rf ${distDir}`
 }

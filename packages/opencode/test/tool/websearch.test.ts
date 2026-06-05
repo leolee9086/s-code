@@ -37,11 +37,11 @@ describe("websearch provider", () => {
     expect(selectWebSearchProvider(SESSION_ID, { exa: false, parallel: true })).toBe("parallel")
   })
 
-  test("defaults to DuckDuckGo when no flags are set", () => {
+  test("defaults to DuckDuckGo when no flags are set (triggers multi-engine mode)", () => {
     expect(selectWebSearchProvider(SESSION_ID, { exa: false, parallel: false })).toBe("duckduckgo")
   })
 
-  test("accepts DuckDuckGo as an operational override", () => {
+  test("accepts DuckDuckGo as an operational override (triggers multi-engine mode)", () => {
     const original = process.env.OPENCODE_WEBSEARCH_PROVIDER
     try {
       process.env.OPENCODE_WEBSEARCH_PROVIDER = "duckduckgo"
@@ -64,6 +64,11 @@ describe("websearch provider", () => {
     expect(webSearchProviderLabel("exa")).toBe("Exa 网络搜索")
     expect(webSearchProviderLabel("duckduckgo")).toBe("DuckDuckGo 网络搜索")
     expect(webSearchProviderLabel(undefined)).toBe("网络搜索")
+  })
+
+  test("labels multi-engine provider strings", () => {
+    expect(webSearchProviderLabel("duckduckgo+brave")).toBe("多引擎搜索 (duckduckgo+brave)")
+    expect(webSearchProviderLabel("duckduckgo+brave+exa")).toBe("多引擎搜索 (duckduckgo+brave+exa)")
   })
 
   test("uses the provider API model id for Parallel analytics", () => {

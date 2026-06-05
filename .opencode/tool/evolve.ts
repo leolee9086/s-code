@@ -47,7 +47,20 @@ export default tool({
     const distOutDir = currentDir
       ? knownDirs.find(d => d !== currentDir)!
       : "dist-tick"
-    const binary = pathM.join(pkgDir, distOutDir, binDir, "bin", `opencode-${sessionId}${process.platform === "win32" ? ".exe" : ""}`)
+
+    // 轮次计数器，确保每次 evolve 输出不同文件名，永不文件锁冲突
+    const countPath = pathM.join(worktree, "s-temp", ".evolve-round")
+    let round = 0
+    try {
+      const { readFileSync } = await import("fs")
+      round = Number(readFileSync(countPath, "utf-8").trim()) || 0
+    } catch { /* 首次默认 0 */ }
+    const { writeFileSync, mkdirSync } = await import("fs")
+    mkdirSync(pathM.join(worktree, "s-temp"), { recursive: true })
+    writeFileSync(countPath, String(round + 1), "utf-8")
+
+    const binarySuffix = `${sessionId}-${round}`
+    const binary = pathM.join(pkgDir, distOutDir, binDir, "bin", `opencode-${binarySuffix}${process.platform === "win32" ? ".exe" : ""}`)
 
     const lines: string[] = []
 
@@ -63,7 +76,7 @@ export default tool({
     // 2. 构建
     // --binary-suffix <sessionId> 输出独特文件名，不冲突；--outdir 切换目录避免覆写运行中的 exe
     lines.push("▶ 构建...")
-    const buildArgs = ["run", "build", "--single", "--skip-install", "--skip-embed-web-ui", "--outdir", distOutDir, "--binary-suffix", sessionId]
+    const buildArgs = ["run", "build", "--single", "--skip-install", "--skip-embed-web-ui", "--outdir", distOutDir, "--binary-suffix", binarySuffix]
     try {
       await $`bun ${buildArgs}`.cwd(pkgDir).quiet()
       lines.push("   ✓ 构建成功")

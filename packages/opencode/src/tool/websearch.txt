@@ -1,17 +1,18 @@
-- 使用已配置的搜索引擎搜索网络
-- 内置 DuckDuckGo 搜索无需任何 API key 或配置
+- 多引擎元搜索：同时搜索多个引擎，自动去重、评分、排序，提供更全面的结果
+- 内置 DuckDuckGo + Brave 搜索无需任何 API key 或配置，开箱即用
 - 同时支持配置 API key 后的 Exa 和 Parallel 搜索服务
 - 提供当前事件和训练数据之外的最新信息
 - 基于查询返回最相关网站的摘要内容
 - 当需要实时或近期信息且训练数据可能未包含时使用此工具
 
 使用说明：
-  - 默认使用 DuckDuckGo（免费，无需 API key）——开箱即用
+  - 默认使用多引擎聚合模式（DuckDuckGo + Brave），无需 API key——开箱即用
+  - Brave 免费版无需 API key（每月 2000 次查询）；设置 BRAVE_API_KEY 可获得更高额度
   - 使用 Exa 或 Parallel 需要设置 EXA_API_KEY 或 PARALLEL_API_KEY 环境变量
   - 通过 OPENCODE_WEBSEARCH_PROVIDER 环境变量覆盖服务商（可选值："duckduckgo", "exa", "parallel"）
   - 支持实时爬取模式（Parallel 服务商）：'fallback'（默认，优先使用缓存）、'preferred'（优先实时爬取）
   - 搜索类型（当可用时）：'auto'（均衡）、'fast'（快速）、'deep'（深度）
-  - DuckDuckGo 结果为每条包含标题、URL 和摘要
+  - 每条结果包含标题、URL 和摘要，多引擎结果附带来源标记
   - 可为 Exa/Parallel 配置上下文字符数上限以优化 LLM 输出
   - 在单个 API 调用内自动完成搜索
 
