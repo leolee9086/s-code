@@ -24,6 +24,13 @@ import { makeSogou } from "./engines/sogou"
 import { make360Search } from "./engines/360search"
 import { makeGoogle } from "./engines/google"
 import { makeYandex } from "./engines/yandex"
+import { makeNaver } from "./engines/naver"
+import { makeGoogleImages } from "./engines/google-images"
+import { makeBingVideos } from "./engines/bing-videos"
+import { makeDailymotion } from "./engines/dailymotion"
+import { makeSoundCloud } from "./engines/soundcloud"
+import { makeFlickr } from "./engines/flickr"
+
 
 /**
  * 站点限定搜索引擎配置
@@ -221,6 +228,18 @@ export function selectEngines(
     })))
   }
 
+  // Naver 搜索 — 韩语区主要搜索引擎
+  if (!flags) {
+    engines.push(makeNaver(makeEngineConfig({
+      name: "naver",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // 搜狗搜索 — 中文网页搜索（SearXNG sogou.py 参考）
   if (!flags) {
     engines.push(makeSogou(makeEngineConfig({
@@ -253,6 +272,66 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Bing Videos — 视频搜索
+  if (!flags) {
+    engines.push(makeBingVideos(makeEngineConfig({
+      name: "bing-videos",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Dailymotion — 视频搜索（Dailymotion REST API）
+  if (!flags) {
+    engines.push(makeDailymotion(makeEngineConfig({
+      name: "dailymotion",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // SoundCloud — 音频/音乐搜索
+  if (!flags) {
+    engines.push(makeSoundCloud(makeEngineConfig({
+      name: "soundcloud",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Flickr — 图片搜索
+  if (!flags) {
+    engines.push(makeFlickr(makeEngineConfig({
+      name: "flickr",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Google Images — 图片搜索（Google JSON API）
+  if (!flags) {
+    engines.push(makeGoogleImages(makeEngineConfig({
+      name: "google-images",
+      weight: 1.0,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 1,
       requiresKey: false,
     })))
   }

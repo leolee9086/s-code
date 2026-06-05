@@ -2,30 +2,26 @@
  * Google 搜索引擎适配器
  *
  * 参考 SearXNG 的 google.py (18.8KB)
- * 通过 HTTP 抓取 Google 搜索结果 HTML，无需 API key。
+ * 完整的语言/地区/域名协商 + CAPTCHA 检测。
  *
- * 关键策略（来自 SearXNG）：
- * - 设置 CONSENT cookie 绕过 GDPR 弹窗
- * - 使用 Google Search App User-Agent
- * - 三段式 CAPTCHA 检测：sorry 域名 / 302 重定向 / 短响应含 /sorry/
- * - XPath 解析搜索结果 (通过正则替代)
- *
- * 注意：Google 反爬严格，引擎会优雅降级（返回空结果），不会重试触发封禁。
+ * 策略：
+ * - getGoogleInfo() 处理 hl/lr/cr 参数和子域名选择
+ * - isGoogleCaptcha() 三段式 CAPTCHA 检测
+ * - CONSENT cookie 绕过 GDPR 弹窗
+ * - Google Search App User-Agent
  */
 import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
 import { makeSearchResult } from "../engine"
-
-const SEARCH_URL = "https://www.google.com/search"
-const USER_AGENT =
-  "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36 (gws)"
+import { getGoogleInfo, isGoogleCaptcha } from "./google-traits"
 
 export function makeGoogle(config: EngineConfig): SearchEngine {
   return {
     name: config.name,
     config,
-    search: (http, query, opts) => searchGoogle(http, query, opts.numResults || config.maxResults, config.timeout),
+    search: (http, query, opts) =>
+      searchGoogle(http, query, opts.numResults || config.maxResults, config.timeout, opts.lang),
   }
 }
 
@@ -34,24 +30,30 @@ function searchGoogle(
   query: string,
   numResults: number,
   timeout: number,
+  lang?: string,
 ): Effect.Effect<readonly SearchResult[], unknown, never> {
   return Effect.gen(function* () {
+    // 使用 traits 获取语言/地区/域名参数
+    const info = getGoogleInfo(lang)
+
     const params = new URLSearchParams({
       q: query,
-      hl: "en",
       num: String(Math.min(numResults, 20)),
       start: "0",
       filter: "0",
       safe: "off",
+      ...info.params,
     })
 
+    const url = `https://${info.subdomain}/search?${params.toString()}`
+
     const response = yield* http.execute(
-      HttpClientRequest.get(`${SEARCH_URL}?${params.toString()}`).pipe(
+      HttpClientRequest.get(url).pipe(
         HttpClientRequest.setHeaders({
-          "User-Agent": USER_AGENT,
-          "Accept-Language": "en-US,en;q=0.9",
+          ...info.headers,
+          "Accept-Language": lang?.replace("_", "-") || "en-US,en;q=0.9",
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          Cookie: "CONSENT=YES+",
+          Cookie: Object.entries(info.cookies).map(([k, v]) => `${k}=${v}`).join("; "),
         }),
       ),
     ).pipe(Effect.timeout(timeout))
@@ -60,8 +62,8 @@ function searchGoogle(
     const html: string = yield* response.text
     if (!html) return []
 
-    // Google CAPTCHA 检测：短响应（<2000字节）含 /sorry/ 或重定向到 sorry
-    if (html.length < 2000 && (html.includes("/sorry/") || html.includes("sorry.google"))) return []
+    // CAPTCHA 检测
+    if (isGoogleCaptcha(response.status, html)) return []
 
     return parseGoogleResults(html, numResults)
   })
@@ -70,47 +72,42 @@ function searchGoogle(
 /**
  * 解析 Google 搜索结果 HTML
  *
- * 参考 SearXNG 的 XPath: //a[@data-ved and not(@class)]
- * 提取: h3 标题, a/@href, div.VwiC3b 摘要
+ * 参考 SearXNG: //a[@data-ved and not(@class)]
+ * 标题: h3 内容
+ * URL: a/@href → /url?q=实际URL
+ * 摘要: div.VwiC3b
  */
 export function parseGoogleResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = []
   let pos = 0
 
-  // 匹配搜索结果块：<a data-ved="..." href="..."> <h3>...</h3> </a>
-  const blockRegex = /<a[^>]*data-ved[^>]*href="\/url\?q=([^"&]+)[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi
-  let match: RegExpExecArray | null
+  const titleRegex = /<a[^>]*data-ved[^>]*href="\/url\?q=([^"&]+)[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi
 
-  while ((match = blockRegex.exec(html)) !== null) {
-    if (results.length >= maxResults) break
-    const block = match[0]
-
-    let url = decodeURIComponent(match[1])
-    const title = match[2].replace(/<[^>]*>/g, "").trim()
-    if (!title || !url) continue
-
-    // 清理 Google 追踪参数
+  const titlePositions: Array<{ url: string; title: string; index: number }> = []
+  let titleMatch: RegExpExecArray | null
+  while ((titleMatch = titleRegex.exec(html)) !== null) {
+    if (titlePositions.length >= maxResults * 2) break
+    let url = decodeURIComponent(titleMatch[1])
     if (url.includes("&sa=U")) url = url.split("&sa=U")[0]
+    const title = titleMatch[2].replace(/<[^>]*>/g, "").trim()
+    if (title && url) titlePositions.push({ url, title, index: titleMatch.index })
+  }
 
-    // 摘要
+  for (const tp of titlePositions) {
+    if (results.length >= maxResults) break
+    const after = html.slice(tp.index, tp.index + 2000)
     let snippet = ""
-    const snippetMatch = block.match(/<div[^>]*class="[^"]*VwiC3b[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
-    if (snippetMatch) snippet = snippetMatch[1].replace(/<[^>]*>/g, "").trim()
-
-    // 日期（Google 有时会显示）
-    let publishedDate: number | undefined
-    const dateMatch = block.match(/(\d{4}-\d{2}-\d{2})/)
-    if (dateMatch) publishedDate = new Date(dateMatch[1]).getTime()
+    const snipMatch = after.match(/<div[^>]*class="[^"]*VwiC3b[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+    if (snipMatch) snippet = snipMatch[1].replace(/<[^>]*>/g, "").trim()
 
     pos++
     results.push(
       makeSearchResult({
-        title,
-        url,
+        title: tp.title,
+        url: tp.url,
         snippet: snippet.slice(0, 300),
         engine: "google",
         position: pos,
-        publishedDate,
       }),
     )
   }
