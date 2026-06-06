@@ -142,8 +142,15 @@ describe("containsPath", () => {
     () =>
       Effect.gen(function* () {
         const ctx = yield* InstanceState.context
-        expect(containsPath("/etc/passwd", ctx)).toBe(false)
-        expect(containsPath("/tmp/other-project", ctx)).toBe(false)
+        // 使用平台无关的路径进行路径穿越测试
+        const outsidePath = process.platform === "win32"
+          ? "C:\\Windows\\System32\\etc\\passwd"
+          : "/etc/passwd"
+        const outsideDir = process.platform === "win32"
+          ? "C:\\does-not-exist\\other-project"
+          : "/tmp/other-project"
+        expect(containsPath(outsidePath, ctx)).toBe(false)
+        expect(containsPath(outsideDir, ctx)).toBe(false)
       }),
     { git: true },
   )
@@ -167,7 +174,8 @@ describe("containsPath", () => {
         const ctx = yield* InstanceState.context
         expect(ctx.directory).toBe(ctx.worktree)
         expect(containsPath(path.join(test.directory, "file.txt"), ctx)).toBe(true)
-        expect(containsPath("/etc/passwd", ctx)).toBe(false)
+        const outside1 = process.platform === "win32" ? "C:\\Windows\\System32\\etc\\passwd" : "/etc/passwd"
+        expect(containsPath(outside1, ctx)).toBe(false)
       }),
     { git: true },
   )
@@ -178,8 +186,10 @@ describe("containsPath", () => {
       const ctx = yield* InstanceState.context
       // worktree is "/" for non-git projects, but containsPath should NOT allow all paths
       expect(containsPath(path.join(test.directory, "file.txt"), ctx)).toBe(true)
-      expect(containsPath("/etc/passwd", ctx)).toBe(false)
-      expect(containsPath("/tmp/other", ctx)).toBe(false)
+      const outside1 = process.platform === "win32" ? "C:\\Windows\\System32\\etc\\passwd" : "/etc/passwd"
+      expect(containsPath(outside1, ctx)).toBe(false)
+      const outside2 = process.platform === "win32" ? "C:\\does-not-exist\\tmp\\other" : "/tmp/other"
+      expect(containsPath(outside2, ctx)).toBe(false)
     }),
   )
 })

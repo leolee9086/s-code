@@ -65,7 +65,7 @@ function searchYouTube(
  * YouTube 搜索结果在 JSON 数据块中（var ytInitialData）
  * 也支持从 DOM 结构中提取
  */
-function parseYouTubeResults(html: string, maxResults: number): SearchResult[] {
+export function parseYouTubeResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = []
 
   // 方法1: 从 ytInitialData JSON 中提取
@@ -150,7 +150,7 @@ function parseYouTubeResults(html: string, maxResults: number): SearchResult[] {
   return results
 }
 
-function getTimeRangeParam(timeRange?: string): string {
+export function getTimeRangeParam(timeRange?: string): string {
   switch (timeRange) {
     case "day":
       return "EgIIBQ%3D%3D"

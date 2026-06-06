@@ -195,9 +195,13 @@ function parseTwitterDirectResults(html: string, maxResults: number): SearchResu
       const data = JSON.parse(jsonMatch[1])
       const tweets = data.tweets
       if (tweets && typeof tweets === "object") {
-        const tweetList = Object.values(tweets).slice(0, maxResults)
-        for (const tweet of tweetList) {
-          const t = tweet as any
+        const tweetList = Object.values(tweets) as Array<{
+          full_text?: string
+          user_screen_name?: string
+          id_str?: string
+          created_at?: string
+        }>
+        for (const t of tweetList.slice(0, maxResults)) {
           if (!t.full_text) continue
 
           const username = t.user_screen_name || ""

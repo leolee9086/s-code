@@ -334,3 +334,67 @@ describe("formatEngineStatusReport", () => {
     expect(report).toContain("timeout")
   })
 })
+
+// ── formatStructuredReport（灵感：BettaFish Report Agent）───
+
+describe("formatStructuredReport", () => {
+  function makeResult(overrides: Partial<import("../../src/search/engine").AggregatedResult> = {}) {
+    return makeAggregatedResult({
+      title: "Test Result",
+      url: "https://example.com/page",
+      snippet: "Test snippet",
+      engines: ["duckduckgo"],
+      positions: [1],
+      score: 1.0,
+      ...overrides,
+    })
+  }
+
+  test("returns empty string for no results", () => {
+    expect(Aggregator.formatStructuredReport([], "test")).toBe("")
+  })
+
+  test("generates structured report with summary", () => {
+    const results = [
+      makeResult({ title: "Result 1", category: "general" }),
+      makeResult({ title: "Result 2", url: "https://example.org", engines: ["brave"], category: "general" }),
+    ]
+    const report = Aggregator.formatStructuredReport(results, "test query")
+    expect(report).toContain("test query")
+    expect(report).toContain("2 条结果")
+    expect(report).toContain("2 个来源")
+    expect(report).toContain("Result 1")
+    expect(report).toContain("Result 2")
+  })
+
+  test("groups results by category", () => {
+    const results = [
+      makeResult({ title: "News 1", category: "news", url: "https://news.com/1" }),
+      makeResult({ title: "Video 1", category: "video", url: "https://video.com/1" }),
+      makeResult({ title: "General 1", category: "general", url: "https://general.com/1" }),
+    ]
+    const report = Aggregator.formatStructuredReport(results, "test")
+    expect(report).toContain("新闻")
+    expect(report).toContain("视频")
+    expect(report).toContain("综合信息")
+  })
+
+  test("includes source diversity analysis", () => {
+    const results = [
+      makeResult({ engines: ["duckduckgo"], url: "https://ex1.com" }),
+      makeResult({ engines: ["brave"], url: "https://ex2.com" }),
+    ]
+    const report = Aggregator.formatStructuredReport(results, "test")
+    expect(report).toContain("独立来源数")
+    expect(report).toContain("搜索引擎数")
+  })
+
+  test("categorizes timeliness correctly", () => {
+    const now = Date.now()
+    const results = [
+      makeResult({ publishedDate: now - 3600000 }), // 1 hour ago
+    ]
+    const report = Aggregator.formatStructuredReport(results, "test")
+    expect(report).toContain("1 天内")
+  })
+})

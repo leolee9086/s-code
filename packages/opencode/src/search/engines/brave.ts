@@ -1,9 +1,12 @@
 /**
  * Brave Search 搜索引擎适配器
+ *
+ * 参考 SearXNG: searx/engines/brave.py
+ * 零风险：公开 JSON API，无需 key（设置 BRAVE_API_KEY 可提升限额）
  */
 import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
-import type { EngineConfig, SearchEngine, SearchOptions } from "../engine"
+import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
 import { makeSearchResult } from "../engine"
 
 const BRAVE_API = "https://api.search.brave.com/res/v1/web/search"
@@ -35,24 +38,42 @@ export function makeBrave(config: EngineConfig): SearchEngine {
         ).pipe(Effect.timeout(config.timeout))
 
         const status = response.status
-        if (status === 429 || status < 200 || status >= 400) return [] as readonly import("../engine").SearchResult[]
+        if (status === 429 || status < 200 || status >= 400) return []
 
         const text: string = yield* response.text
-        const data = JSON.parse(text)
-        const webResults: any[] = data?.web?.results ?? data?.results ?? []
-
-        return webResults.map((r: any, i: number) =>
-          makeSearchResult({
-            title: r.title ?? "",
-            url: r.url ?? "",
-            snippet: r.description ?? r.snippet ?? "",
-            engine: "brave",
-            position: i + 1,
-            category: "general",
-          }),
-        )
+        return parseBraveResults(text)
       }),
   }
+}
+
+interface BraveWebResult {
+  title?: string
+  url?: string
+  description?: string
+  snippet?: string
+}
+
+interface BraveWebResponse {
+  web?: { results?: BraveWebResult[] }
+  results?: BraveWebResult[]
+}
+
+export function parseBraveResults(raw: string): SearchResult[] {
+  let data: unknown
+  try { data = JSON.parse(raw) } catch { return [] }
+
+  const parsed = data as BraveWebResponse
+  const webResults = parsed?.web?.results ?? parsed?.results ?? []
+  return webResults.map((r: BraveWebResult, i: number) =>
+    makeSearchResult({
+      title: r.title ?? "",
+      url: r.url ?? "",
+      snippet: r.description ?? r.snippet ?? "",
+      engine: "brave",
+      position: i + 1,
+      category: "general",
+    }),
+  )
 }
 
 export * as BraveEngine from "./brave"

@@ -225,6 +225,9 @@ export function formatResults(results: AggregatedResult[], query: string, ctxSug
     (r, i) => {
       const meta: string[] = [`[${extractDomain(r.url)}]`]
       if (r.category) meta.push(r.category.toUpperCase())
+      // 关键词语气提示（灵感：BettaFish Sentiment Analysis）
+      const sentiment = detectSentiment(r.title + " " + r.snippet)
+      if (sentiment) meta.push(sentiment)
       const engineStr = r.engines.length === 1
         ? r.engines[0]
         : `${r.engines[0]}+${r.engines.length - 1}更多`
@@ -251,6 +254,156 @@ export function formatResults(results: AggregatedResult[], query: string, ctxSug
   }
 
   return parts.join("\n\n")
+}
+
+// ── 结构化报告格式（灵感：BettaFish 的 Report Agent + Forum 协作机制）─
+
+/** 搜索结果类别分组 */
+interface CategoryGroup {
+  category: string
+  sources: string[]
+  results: AggregatedResult[]
+}
+
+/**
+ * 将结果格式化为结构化分析报告。
+ *
+ * 借鉴 BettaFish Report Agent 的设计，生成包含摘要、分类聚合、
+ * 来源多样性分析和趋势洞察的结构化报告，适合 LLM 深度阅读。
+ */
+export function formatStructuredReport(results: AggregatedResult[], query: string): string {
+  if (results.length === 0) return ""
+
+  /** 提取域名 */
+  function domain(url: string): string {
+    try { return new URL(url).hostname.replace(/^www\./, "") } catch { return url }
+  }
+
+  // 1. 按类别分组
+  const groups = new Map<string, CategoryGroup>()
+  for (const r of results) {
+    const cat = r.category || "general"
+    if (!groups.has(cat)) groups.set(cat, { category: cat, sources: [], results: [] })
+    const g = groups.get(cat)!
+    g.results.push(r)
+    const d = domain(r.url)
+    if (!g.sources.includes(d)) g.sources.push(d)
+  }
+
+  // 2. 统计信息
+  const allSources = new Set(results.map((r) => domain(r.url)))
+  const engineSet = new Set(results.flatMap((r) => r.engines))
+  const topSource = [...allSources].slice(0, 5)
+
+  // 3. 情感/语气分析（灵感：BettaFish 多语言情感分析）
+  const sentiments = results.map((r) => detectSentiment(r.title + " " + r.snippet))
+  const positive = sentiments.filter((s) => s === "[正面]").length
+  const negative = sentiments.filter((s) => s === "[负面]").length
+  const neutral = sentiments.filter((s) => s === "[中性]").length
+  const sentimentSummary = positive + negative + neutral > 0
+    ? `${positive} 正面 · ${neutral} 中性 · ${negative} 负面`
+    : "未检测到明显情感倾向"
+
+  // 4. 生成报告
+  const sections: string[] = []
+
+  // 摘要
+  sections.push(
+    `## 搜索结果分析报告: "${query}"\n` +
+    `\n` +
+    `**概览**: 共检索到 ${results.length} 条结果，来自 ${allSources.size} 个来源 ` +
+    `（${engineSet.size} 个搜索引擎）。\n` +
+    `**主要来源**: ${topSource.join(", ")}。\n` +
+    `**覆盖类别**: ${[...groups.keys()].join(", ")}。\n` +
+    `**时效性**: ${getTimeliness(results)}。\n` +
+    `**情感倾向**: ${sentimentSummary}。`,
+  )
+
+  // 各类别结果
+  let rank = 0
+  for (const [cat, group] of groups) {
+    const label = CATEGORY_LABELS[cat] || cat
+    sections.push(
+      `### ${label}（${group.results.length} 条）\n` +
+      `来源: ${group.sources.join(", ")}\n` +
+      group.results.slice(0, 5).map((r) => {
+        rank++
+        return (
+          `${rank}. **${r.title}**\n` +
+          `   [${domain(r.url)}] | ${r.url}\n` +
+          (r.publishedDate ? `   日期: ${new Date(r.publishedDate).toISOString().slice(0, 10)}\n` : "") +
+          `   ${r.snippet || ""}`
+        )
+      }).join("\n\n"),
+    )
+  }
+
+  // 来源多样性分析
+  sections.push(
+    `### 来源分析\n` +
+    `- **独立来源数**: ${allSources.size}\n` +
+    `- **搜索引擎数**: ${engineSet.size}\n` +
+    `- **最高分**: ${(results[0]?.score ?? 0).toFixed(1)}\n` +
+    `- **来源列表**: ${[...allSources].join(", ")}`,
+  )
+
+  sections.push(
+    `---\n*报告由 opencode Search 生成 | ` +
+    `共 ${results.length} 条结果 · ${allSources.size} 来源 · ` +
+    `引擎: ${[...engineSet].join(", ")}*`,
+  )
+
+  return sections.join("\n\n")
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  general: "综合信息",
+  video: "视频",
+  image: "图片",
+  music: "音乐",
+  code: "代码/技术",
+  academic: "学术",
+  news: "新闻",
+  social: "社交",
+  encyclopedia: "百科",
+}
+
+function getTimeliness(results: AggregatedResult[]): string {
+  const dates = results.map((r) => r.publishedDate).filter((d): d is number => d !== undefined)
+  if (dates.length === 0) return "多数结果未标注日期"
+  
+  const now = Date.now()
+  const oldest = Math.min(...dates)
+  const newest = Math.max(...dates)
+  const rangeDays = Math.round((now - oldest) / 86400000)
+  const newestDays = Math.round((now - newest) / 86400000)
+  
+  if (newestDays <= 1) return "包含最新（1 天内）内容"
+  if (newestDays <= 7) return "包含本周内容"
+  if (rangeDays <= 30) return `近一月内的内容（最新 ${newestDays} 天前）`
+  return `内容时间跨度约 ${rangeDays} 天（最新 ${newestDays} 天前）`
+}
+
+// ── 简易关键词语气检测（灵感：BettaFish 多语言情感分析）──────
+
+/** 正向关键词 */
+const POSITIVE_WORDS = /\b(excellent|amazing|great|wonderful| fantastic|beautiful|love|best|perfect|成功|优秀|出色|突破|创新|领先|好评)/i
+
+/** 负向关键词 */
+const NEGATIVE_WORDS = /\b(terrible|awful|horrible|worst|bad|hate|fail|error|crisis|惨淡|失败|崩盘|暴跌|争议|丑闻|批评|投诉|爆炸|死亡)/i
+
+/** 争议/中立关键词 */
+const NEUTRAL_WORDS = /\b(分析|调查|报道|研究|report|analysis|survey|review|update|公告|声明|回应)/i
+
+/**
+ * 基于关键词的简易语气检测。
+ * 轻量级实现，无需 ML 模型，快速给出结果的情感倾向提示。
+ */
+function detectSentiment(text: string): string | undefined {
+  if (POSITIVE_WORDS.test(text)) return "[正面]"
+  if (NEGATIVE_WORDS.test(text)) return "[负面]"
+  if (NEUTRAL_WORDS.test(text)) return "[中性]"
+  return undefined
 }
 
 /** 格式化引擎健康状态报告 */

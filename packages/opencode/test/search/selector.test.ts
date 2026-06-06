@@ -78,4 +78,32 @@ describe("selectEngines", () => {
     expect(names).toContain("xiaohongshu")
     expect(names).toContain("zhihu")
   })
+
+  test("includes recently-added translation engines when no flags", () => {
+    const engines = selectEngines()
+    const names = engines.map(e => e.name)
+    expect(names).toContain("lingva")
+    expect(names).toContain("libretranslate")
+    expect(names).toContain("deepl")
+  })
+
+  test("includes recently-added image engines when no flags", () => {
+    const engines = selectEngines()
+    const names = engines.map(e => e.name)
+    expect(names).toContain("tineye")
+    expect(names).toContain("adobe-stock")
+  })
+
+  test("includes yandex-music when no flags", () => {
+    const engines = selectEngines()
+    const names = engines.map(e => e.name)
+    expect(names).toContain("yandex-music")
+  })
+
+  test("includes academic engines (pdbe) when no flags", () => {
+    const engines = selectEngines()
+    const names = engines.map(e => e.name)
+    expect(names).toContain("pdbe")
+    expect(names).toContain("microsoft-learn")
+  })
 })

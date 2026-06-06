@@ -34,7 +34,7 @@ export function makeDuckDuckGo(config: EngineConfig): SearchEngine {
  * - "en" → "us-en"
  * - 默认 → "wt-wt"（不指定区域）
  */
-function langToKl(lang?: string): string {
+export function langToKl(lang?: string): string {
   if (!lang) return "wt-wt"
   const map: Record<string, string> = {
     "zh-CN": "cn-zh",
@@ -58,7 +58,7 @@ function langToKl(lang?: string): string {
 /**
  * 根据 timeRange 构建 DDG 的 df 参数（日期过滤）
  */
-function timeRangeToDf(timeRange?: "day" | "week" | "month" | "year"): string {
+export function timeRangeToDf(timeRange?: "day" | "week" | "month" | "year"): string {
   if (!timeRange) return ""
   const map: Record<string, string> = {
     day: "d",
@@ -256,7 +256,7 @@ function extractUrl(href: string): string {
   return href
 }
 
-function parseHtmlResults(html: string, maxResults: number): SearchResult[] {
+export function parseHtmlResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = []
   let current: { title?: string; url?: string; snippet?: string; dateText?: string; type?: string } = {}
   let inResult = false, depth = 0, inTitle = false, inSnippet = false, inDate = false, inType = false, textBuf = "", pos = 0
@@ -339,7 +339,7 @@ function parseHtmlResults(html: string, maxResults: number): SearchResult[] {
   return results
 }
 
-function parseLiteResults(html: string, maxResults: number): SearchResult[] {
+export function parseLiteResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = []
   const seen = new Set<string>(); let pos = 0
   const tableRegex = /<tr[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class="[^"]*snippet[^"]*"[^>]*>([\s\S]*?)<\/td>/gi

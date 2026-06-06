@@ -2,9 +2,9 @@
 
 ## Summary
 - Total SearXNG engines: 222
-- Our engines: 125 (including 3 utility files)
-- Actual engine implementations: 122
-- Coverage: ~55.0% of SearXNG engines
+- Our engines: 148 (including 3 utility files)
+- Actual engine implementations: 145
+- Coverage: ~65.3% of SearXNG engines
 
 ## Engine Categories
 
@@ -26,6 +26,8 @@
 | aol.py | aol.ts | ✅ Done | HTML parsing |
 | gmx.py | gmx.ts | ✅ Done | HTML parsing |
 | yep.py | yep.ts | ✅ Done | JSON API |
+| mojeek.py | mojeek.ts | ✅ Done | HTML parsing |
+| grokipedia.py | grokipedia.ts | ✅ Done | JSON API |
 | searx_engine.py | - | ⚠️ Skip | Meta-engine (SearXNG instance) |
 
 ### Chinese Search (5 engines)
@@ -53,7 +55,7 @@
 | flickr_noapi.py | flickr.ts | ✅ Done | HTML parsing (same as flickr) |
 | imgur.py | imgur.ts | ✅ Done | HTML parsing |
 | 500px.py | 500px.ts | ✅ Done | GraphQL API |
-| adobe_stock.py | - | ❌ TODO | Adobe Stock (needs key) |
+| adobe_stock.py | adobe-stock.ts | ✅ Done | JSON API |
 | artstation.py | artstation.ts | ✅ Done | JSON API (needs CSRF) |
 | cara.py | cara.ts | ✅ Done | JSON API |
 | ipernity.py | ipernity.ts | ✅ Done | HTML parsing |
@@ -62,8 +64,12 @@
 | flaticon.py | flaticon.ts | ✅ Done | HTML parsing |
 | public_domain_image_archive.py | - | ❌ TODO | Public domain images |
 | openclipart.py | openclipart.ts | ✅ Done | HTML parsing |
-| tineye.py | - | ❌ TODO | Reverse image search |
+| tineye.py | tineye.ts | ✅ Done | JSON API |
 | sogou_images.py | sogou-images.ts | ✅ Done | HTML parsing (__INITIAL_STATE__) |
+| artic.py | artic.ts | ✅ Done | JSON API |
+| loc.py | loc.ts | ✅ Done | JSON API |
+| www1x.py | 1x.ts | ✅ Done | HTML parsing |
+| findthatmeme.py | findthatmeme.ts | ✅ Done | JSON API |
 
 ### Videos (17 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -85,6 +91,7 @@
 | acfun.py | acfun.ts | ✅ Done | HTML parsing |
 | sogou_videos.py | sogou-videos.ts | ✅ Done | JSON API |
 | tubearchivist.py | - | ❌ TODO | TubeArchivist |
+| sepiasearch.py | sepiasearch.ts | ✅ Done | JSON API |
 
 ### News (6 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -106,7 +113,8 @@
 | mixcloud.py | mixcloud.ts | ✅ Done | JSON API |
 | freesound.py | freesound.ts | ✅ Done | JSON API (needs key) |
 | spotify.py | spotify.ts | ✅ Done | JSON API (needs key) |
-| yandex_music.py | - | ❌ TODO | Yandex Music |
+| yandex_music.py | yandex-music.ts | ✅ Done | JSON API |
+| fyyd.py | fyyd.ts | ✅ Done | JSON API |
 
 ### Academic/Science (9 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -120,7 +128,8 @@
 | springer.py | - | ❌ TODO | Springer (needs key) |
 | astrophysics_data_system.py | - | ❌ TODO | ADS astronomy |
 | open_meteo.py | open-meteo.ts | ✅ Done | JSON API |
-| pdbe.py | - | ❌ TODO | Protein Data Bank |
+| pdbe.py | pdbe.ts | ✅ Done | JSON API |
+| scanr_structures.py | scanr.ts | ✅ Done | JSON API |
 
 ### Code/IT (16 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -141,6 +150,9 @@
 | fdroid.py | fdroid.ts | ✅ Done | HTML parsing |
 | gitea.py | gitea.ts | ✅ Done | JSON API |
 | sourcehut.py | sourcehut.ts | ✅ Done | HTML parsing |
+| repology.py | repology.ts | ✅ Done | JSON API |
+| nvd.py | nvd.ts | ✅ Done | JSON API |
+| apkmirror.py | apkmirror.ts | ✅ Done | HTML parsing |
 
 ### Books (4 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -148,7 +160,7 @@
 | goodreads.py | goodreads.ts | ✅ Done | HTML parsing |
 | openlibrary.py | openlibrary.ts | ✅ Done | JSON API |
 | zlibrary.py | - | ❌ TODO | Z-Library (piracy) |
-| annas_archive.py | - | ❌ TODO | Anna's Archive |
+| annas_archive.py | annas-archive.ts | ✅ Done | HTML parsing |
 
 ### Shopping (2 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -161,8 +173,8 @@
 |---------------|------------|--------|-------|
 | imdb.py | imdb.ts | ✅ Done | JSON API |
 | rottentomatoes.py | rottentomatoes.ts | ✅ Done | HTML parsing |
-| moviepilot.py | - | ❌ TODO | MoviePilot |
-| senscritique.py | - | ❌ TODO | SensCritique (French) |
+| moviepilot.py | moviepilot.ts | ✅ Done | JSON API |
+| senscritique.py | senscritique.ts | ✅ Done | HTML parsing |
 
 ### Social (6 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -173,6 +185,7 @@
 | lemmy.py | lemmy.ts | ✅ Done | JSON API |
 | discourse.py | discourse.ts | ✅ Done | JSON API |
 | boardreader.py | boardreader.ts | ✅ Done | HTML parsing |
+| tootfinder.py | tootfinder.ts | ✅ Done | JSON API |
 
 ### Maps (2 engines)
 | SearXNG Engine | Our Engine | Status | Notes |
@@ -194,17 +207,19 @@
 | wikicommons.py | wikicommons.ts | ✅ Done | JSON API |
 | dictzone.py | dictzone.ts | ✅ Done | HTML parsing |
 | duden.py | duden.ts | ✅ Done | HTML parsing |
-| lingva.py | - | ❌ TODO | Translation |
-| libretranslate.py | - | ❌ TODO | Translation |
-| deepl.py | - | ❌ TODO | DeepL translation |
+| lingva.py | lingva.ts | ✅ Done | JSON API |
+| libretranslate.py | libretranslate.ts | ✅ Done | JSON API |
+| deepl.py | deepl.ts | ✅ Done | JSON API (needs key) |
 | currency_convert.py | currency-convert.ts | ✅ Done | DuckDuckGo API |
 | emojipedia.py | emojipedia.ts | ✅ Done | HTML parsing |
-| selfhst.py | - | ❌ TODO | Self-hosted |
+| selfhst.py | selfhst.ts | ✅ Done | JSON API |
 | devicons.py | devicons.ts | ✅ Done | JSON API |
 | lucide.py | lucide.ts | ✅ Done | JSON API |
 | material_icons.py | material-icons.ts | ✅ Done | JSON API |
-| microsoft_learn.py | - | ❌ TODO | Microsoft Learn |
+| microsoft_learn.py | microsoft-learn.ts | ✅ Done | JSON API |
 | hex.py | hex.ts | ✅ Done | JSON API |
+| jisho.py | jisho.ts | ✅ Done | JSON API |
+| radio_browser.py | radio-browser.ts | ✅ Done | JSON API |
 
 ## Summary of Completed Engines
 
@@ -215,24 +230,24 @@
 ✅ google-videos, yahoo-news, reuters, tagesschau, mixcloud, bandcamp, genius, deezer, freesound, spotify
 ✅ crates, pypi, pkg-go-dev, lib-rs, fdroid, metacpan, alpinelinux, archlinux, voidlinux
 ✅ peertube, rumble, niconico, odysee, piped, invidious, bitchute
-✅ pixiv, deviantart, imgur, pexels, wallhaven, artstation, 500px, cara, openclipart, ipernity, uxwing, flaticon, sogou-images
-✅ rottentomatoes, steam, ebay
-✅ openalex, crossref, openlibrary
+✅ pixiv, deviantart, imgur, pexels, wallhaven, artstation, 500px, cara, openclipart, ipernity, uxwing, flaticon, sogou-images, tineye, artic, loc, 1x, findthatmeme
+✅ rottentomatoes, steam, ebay, moviepilot, senscritique
+✅ openalex, crossref, openlibrary, pdbe
 ✅ mastodon, lemmy, discourse, boardreader
 ✅ wttr, open-meteo, currency-convert, wikidata, wikicommons, chinaso, quark
-✅ gitea, sourcehut
-✅ dictzone, duden, emojipedia, cara
-✅ sogou-videos, acfun, iqiyi
+✅ gitea, sourcehut, repology, nvd, apkmirror
+✅ dictzone, duden, emojipedia, cara, jisho
+✅ sogou-videos, acfun, iqiyi, ansa
+✅ yandex-music, annas-archive, radio-browser
+✅ lingva, libretranslate, deepl, microsoft-learn, hex, selfhst, devicons, lucide, material-icons
+✅ mojeek, sepiasearch, loc, 1x, grokipedia, tootfinder, fyyd, scanr
 
 ### Tier 3 - Nice to Have (Niche)
-❌ adobe_stock, public_domain_image_archive, tineye
+❌ public_domain_image_archive
 ❌ tubearchivist
-❌ ansa, yandex_music
-❌ springer, astrophysics_data_system, pdbe
-❌ zlibrary, annas_archive
-❌ moviepilot, senscritique
+❌ springer, astrophysics_data_system
+❌ zlibrary
 ❌ apple_maps, openstreetmap
-❌ lingva, libretranslate, deepl, microsoft_learn, hex
 
 ### Tier 4 - Skip (Low Value / Complex)
 ❌ searx_engine, presearch
