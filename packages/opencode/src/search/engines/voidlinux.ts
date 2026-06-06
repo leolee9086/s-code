@@ -1,18 +1,18 @@
 /**
  * Void Linux 包搜索引擎适配器
  *
- * 搜索 Void Linux 仓库中的包。
- * API: https://x-bp.org/api/v1/query?property=name&value=QUERY
+ * 搜索 Void Linux 上的软件包。
+ * API: https://xq-api.voidlinux.org/v1/query/x86_64?q=QUERY
  *
  * 参考 SearXNG: searx/engines/voidlinux.py
- * 零风险：公开 JSON API，无需 key
+ * 零风险：公开 API，无需 key
  */
 import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
 import { makeSearchResult } from "../engine"
 
-const API_URL = "https://x-bp.org/api/v1/query"
+const API_URL = "https://xq-api.voidlinux.org/v1/query/x86_64"
 const USER_AGENT = "opencode-search/1.0"
 
 export function makeVoidLinux(config: EngineConfig): SearchEngine {
@@ -31,10 +31,7 @@ function searchVoidLinux(
   timeout: number,
 ): Effect.Effect<readonly SearchResult[], unknown, never> {
   return Effect.gen(function* () {
-    const params = new URLSearchParams({
-      property: "name",
-      value: query,
-    })
+    const params = new URLSearchParams({ q: query })
 
     const response = yield* http.execute(
       HttpClientRequest.get(`${API_URL}?${params.toString()}`).pipe(
@@ -55,53 +52,48 @@ function searchVoidLinux(
 
 interface VoidPackage {
   name?: string
-  version?: string
   short_desc?: string
-  homepage?: string
-  arch?: string
+  version?: string
+  revision?: string
   repository?: string
 }
 
-interface VoidResponse {
-  data?: VoidPackage[]
-}
-
-function parseVoidLinuxResults(raw: string, maxResults: number): SearchResult[] {
+export function parseVoidLinuxResults(raw: string, maxResults: number): SearchResult[] {
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch { return [] }
 
-  const data = parsed as VoidResponse
+  const data = parsed as { data?: VoidPackage[] }
   const packages = data?.data
   if (!Array.isArray(packages)) return []
 
   const results: SearchResult[] = []
   let pos = 0
 
+  // 合并相同 URL 的包
+  const packageMap = new Map<string, VoidPackage[]>()
   for (const pkg of packages) {
-    if (results.length >= maxResults) break
     if (!pkg.name) continue
+    const githubSlug = pkg.name.replace(/-(32bit|dbg)$/, "")
+    const url = `https://github.com/void-linux/void-packages/tree/master/srcpkgs/${githubSlug}`
+    const existing = packageMap.get(url) || []
+    existing.push(pkg)
+    packageMap.set(url, existing)
+  }
 
-    const name = pkg.name
-    const version = pkg.version || ""
-    const description = pkg.short_desc || ""
-    const arch = pkg.arch || "x86_64"
-    const repository = pkg.repository || "main"
+  for (const [url, pkgs] of packageMap) {
+    if (results.length >= maxResults) break
 
-    const parts: string[] = []
-    if (version) parts.push(`v${version}`)
-    if (arch) parts.push(arch)
-    if (repository) parts.push(repository)
-
-    const snippet = parts.length > 0
-      ? `[${parts.join(" · ")}] ${description}`.trim()
-      : description || "Void Linux package"
+    const names = pkgs.map(p => p.name).join(" | ")
+    const version = pkgs[0]?.version || ""
+    const revision = pkgs[0]?.revision || ""
+    const description = pkgs[0]?.short_desc || ""
 
     pos++
     results.push(
       makeSearchResult({
-        title: `${name}${version ? ` v${version}` : ""}`,
-        url: `https://voidlinux.org/packages/?arch=${arch}&repository=${repository}&name=${name}`,
-        snippet: snippet.slice(0, 300),
+        title: names,
+        url,
+        snippet: `${description} · v${version}_${revision}`,
         engine: "voidlinux",
         position: pos,
         category: "code",

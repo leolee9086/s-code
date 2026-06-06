@@ -1,20 +1,19 @@
 /**
- * Arch Linux 包搜索引擎适配器
+ * Arch Linux Wiki 搜索引擎适配器
  *
- * 搜索 Arch Linux 官方仓库和 AUR 中的包。
- * API: https://archlinux.org/packages/search/json/?q=QUERY
+ * 搜索 Arch Linux Wiki 上的文档。
+ * URL: https://wiki.archlinux.org/index.php?search=QUERY
  *
  * 参考 SearXNG: searx/engines/archlinux.py
- * 零风险：公开 JSON API，无需 key
+ * 风险较低：公开 HTML 页面解析
  */
 import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
 import { makeSearchResult } from "../engine"
 
-const API_URL = "https://archlinux.org/packages/search/json/"
-const AUR_API_URL = "https://aur.archlinux.org/rpc.php"
-const USER_AGENT = "opencode-search/1.0"
+const BASE_URL = "https://wiki.archlinux.org"
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 export function makeArchLinux(config: EngineConfig): SearchEngine {
   return {
@@ -32,84 +31,58 @@ function searchArchLinux(
   timeout: number,
 ): Effect.Effect<readonly SearchResult[], unknown, never> {
   return Effect.gen(function* () {
-    // 搜索官方仓库
     const params = new URLSearchParams({
-      q: query,
-      limit: String(Math.min(numResults, 50)),
+      search: query,
+      title: "Special:Search",
+      limit: "20",
+      offset: "0",
+      profile: "default",
     })
 
     const response = yield* http.execute(
-      HttpClientRequest.get(`${API_URL}?${params.toString()}`).pipe(
+      HttpClientRequest.get(`${BASE_URL}/index.php?${params.toString()}`).pipe(
         HttpClientRequest.setHeaders({
           "User-Agent": USER_AGENT,
-          Accept: "application/json",
+          Accept: "text/html",
         }),
       ),
     ).pipe(Effect.timeout(timeout))
 
     if (response.status < 200 || response.status >= 400) return []
-    const raw: string = yield* response.text
-    if (!raw) return []
+    const html: string = yield* response.text
+    if (!html) return []
 
-    return parseArchLinuxResults(raw, numResults)
+    return parseArchLinuxResults(html, numResults)
   })
 }
 
-interface ArchPackage {
-  pkgname?: string
-  pkgbase?: string
-  pkgver?: string
-  pkgdesc?: string
-  url?: string
-  maintainer?: string
-  arch?: string
-  repo?: string
-  last_update?: string
-}
-
-interface ArchResponse {
-  result?: ArchPackage[]
-}
-
-function parseArchLinuxResults(raw: string, maxResults: number): SearchResult[] {
-  let parsed: unknown
-  try { parsed = JSON.parse(raw) } catch { return [] }
-
-  const data = parsed as ArchResponse
-  const packages = data?.result
-  if (!Array.isArray(packages)) return []
-
+export function parseArchLinuxResults(html: string, maxResults: number): SearchResult[] {
   const results: SearchResult[] = []
   let pos = 0
 
-  for (const pkg of packages) {
+  // 匹配搜索结果列表
+  const itemRegex = /<li[^>]*class="[^"]*mw-search-result[^"]*"[^>]*>[\s\S]*?<div[^>]*class="[^"]*mw-search-result-heading[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<div[^>]*class="[^"]*searchresult[^"]*"[^>]*>([\s\S]*?)<\/div>/gi
+
+  let match: RegExpExecArray | null
+  while ((match = itemRegex.exec(html)) !== null) {
     if (results.length >= maxResults) break
-    if (!pkg.pkgname) continue
 
-    const name = pkg.pkgname
-    const version = pkg.pkgver || ""
-    const description = pkg.pkgdesc || ""
-    const repo = pkg.repo || "extra"
-    const arch = pkg.arch || "x86_64"
+    const href = match[1].trim()
+    const title = match[2].replace(/<[^>]+>/g, "").trim()
+    const content = match[3].replace(/<[^>]+>/g, "").trim()
 
-    const parts: string[] = []
-    if (version) parts.push(`v${version}`)
-    if (repo) parts.push(repo)
-    if (arch) parts.push(arch)
+    if (!title || !href) continue
 
-    const snippet = parts.length > 0
-      ? `[${parts.join(" · ")}] ${description}`.trim()
-      : description || "Arch Linux package"
+    const url = href.startsWith("http") ? href : `${BASE_URL}${href}`
 
     pos++
     results.push(
       makeSearchResult({
-        title: `${name}${version ? ` v${version}` : ""}`,
-        url: `https://archlinux.org/packages/${repo}/${arch}/${name}/`,
-        snippet: snippet.slice(0, 300),
+        title,
+        url,
+        snippet: content || "Arch Linux Wiki",
         engine: "archlinux",
         position: pos,
-        publishedDate: pkg.last_update ? new Date(pkg.last_update).getTime() : undefined,
         category: "code",
       }),
     )

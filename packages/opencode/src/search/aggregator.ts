@@ -36,6 +36,9 @@ function levenshtein(a: string, b: string): number {
 function isSimilarTitle(a: string, b: string): boolean {
   const maxLen = Math.max(a.length, b.length)
   if (maxLen === 0) return true
+  // 快速路径：长度差异超过 30% 直接跳过
+  const minLen = Math.min(a.length, b.length)
+  if (minLen > 0 && (maxLen - minLen) / maxLen > 0.3) return false
   return levenshtein(a, b) / maxLen < 0.2
 }
 
@@ -84,6 +87,7 @@ export interface AggregateContext {
 export function aggregate(
   allResults: readonly SearchResult[],
   ctx: AggregateContext,
+  query?: string,
 ): AggregatedResult[] {
   // 从原始结果中提取拼写建议
   if (!ctx.suggestion) {
@@ -102,7 +106,7 @@ export function aggregate(
   }
 
   const mergedByUrl: AggregatedResult[] = []
-  for (const [, group] of urlMap) mergedByUrl.push(mergeGroup(group))
+  for (const [, group] of urlMap) mergedByUrl.push(mergeGroup(group, query))
 
   // 阶段 2: 相似标题合并
   const merged: AggregatedResult[] = []
@@ -130,7 +134,15 @@ export function aggregate(
   return diversifyByDomain(merged, 3).slice(0, ctx.maxResults)
 }
 
-function mergeGroup(group: SearchResult[]): AggregatedResult {
+/** 计算 snippet 与查询的相关性分数（包含的关键词越多分越高） */
+function snippetRelevance(snippet: string, query: string): number {
+  if (!query || !snippet) return 0
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const lower = snippet.toLowerCase()
+  return terms.filter((t) => lower.includes(t)).length / terms.length
+}
+
+function mergeGroup(group: SearchResult[], query?: string): AggregatedResult {
   const first = group[0]
   const engines: string[] = []
   const positions: number[] = []
@@ -139,11 +151,18 @@ function mergeGroup(group: SearchResult[]): AggregatedResult {
   let bestDate = first.publishedDate
   let suggestion: string | undefined
 
+  // 选择最长的标题、相关性最高的 snippet
   for (const r of group) {
     engines.push(r.engine)
     positions.push(r.position)
     if (r.title.length > bestTitle.length) bestTitle = r.title
-    if (r.snippet.length > bestSnippet.length) bestSnippet = r.snippet
+    // snippet 选择：优先选择包含更多查询词的，其次选最长的
+    const q = query ?? ""
+    if (snippetRelevance(r.snippet, q) > snippetRelevance(bestSnippet, q) ||
+        (snippetRelevance(r.snippet, q) === snippetRelevance(bestSnippet, q) &&
+         r.snippet.length > bestSnippet.length)) {
+      bestSnippet = r.snippet
+    }
     if (r.publishedDate && (!bestDate || r.publishedDate > bestDate)) bestDate = r.publishedDate
     if (r.suggestion && !suggestion) suggestion = r.suggestion
   }
@@ -206,12 +225,14 @@ export function formatResults(results: AggregatedResult[], query: string, ctxSug
     (r, i) => {
       const meta: string[] = [`[${extractDomain(r.url)}]`]
       if (r.category) meta.push(r.category.toUpperCase())
-      const engines = r.engines.length === 1 ? r.engines[0] : r.engines.join("+")
+      const engineStr = r.engines.length === 1
+        ? r.engines[0]
+        : `${r.engines[0]}+${r.engines.length - 1}更多`
 
       return (
         `${i + 1}. ${r.title}\n` +
         `   ${meta.join(" · ")}\n` +
-        `   ${engines} | ${r.url}` +
+        `   ${engineStr} | ${r.url}` +
         (r.publishedDate ? `\n   日期: ${new Date(r.publishedDate).toISOString().slice(0, 10)}` : "") +
         `\n   ${r.snippet ?? ""}`
       )

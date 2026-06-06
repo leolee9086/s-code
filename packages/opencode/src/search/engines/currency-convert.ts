@@ -4,6 +4,12 @@
  * 使用 DuckDuckGo 的货币转换 API。
  * API: https://duckduckgo.com/js/spice/currency/1/USD/CNY
  *
+ * 支持格式：
+ *   - "100 USD to CNY" / "100 usd to cny"
+ *   - "USD to CNY"
+ *   - "USD CNY"
+ *   - "1 USD in CNY"
+ *
  * 参考 SearXNG: searx/engines/currency_convert.py
  * 零风险：公开 API，无需 key
  */
@@ -27,39 +33,22 @@ export function makeCurrencyConvert(config: EngineConfig): SearchEngine {
 function searchCurrencyConvert(
   http: HttpClient.HttpClient,
   query: string,
-  numResults: number,
+  _numResults: number,
   timeout: number,
 ): Effect.Effect<readonly SearchResult[], unknown, never> {
   return Effect.gen(function* () {
-    // 解析查询: "100 USD to CNY" 或 "USD to CNY"
-    const match = query.match(/^(\d+\.?\d*)\s*([A-Z]{3})\s+to\s+([A-Z]{3})$/i)
-    if (!match) {
-      // 尝试简单格式: "USD CNY"
-      const simpleMatch = query.match(/^([A-Z]{3})\s+([A-Z]{3})$/i)
-      if (!simpleMatch) return []
+    // 解析查询: "100 USD to/=> CNY", "USD to/=> CNY", "USD CNY", "100 USD in CNY"
+    const currencyMatch = query.match(
+      /^(?:(\d+\.?\d*)\s*)?([A-Za-z]{3})\s+(?:to|in|=>|→)\s+([A-Za-z]{3})$|^(\d+\.?\d*)\s+([A-Za-z]{3})\s+([A-Za-z]{3})$|^([A-Za-z]{3})\s+([A-Za-z]{3})$/,
+    )
+    if (!currencyMatch) return []
 
-      const from = simpleMatch[1].toUpperCase()
-      const to = simpleMatch[2].toUpperCase()
-
-      const response = yield* http.execute(
-        HttpClientRequest.get(`${BASE_URL}/1/${from}/${to}`).pipe(
-          HttpClientRequest.setHeaders({
-            "User-Agent": USER_AGENT,
-            Accept: "application/json",
-          }),
-        ),
-      ).pipe(Effect.timeout(timeout))
-
-      if (response.status < 200 || response.status >= 400) return []
-      const raw: string = yield* response.text
-      if (!raw) return []
-
-      return parseCurrencyResults(raw, `1 ${from}`, from, to)
-    }
-
-    const amount = parseFloat(match[1])
-    const from = match[2].toUpperCase()
-    const to = match[3].toUpperCase()
+    // 从各个捕获组提取
+    const amount = parseFloat(
+      currencyMatch[1] || currencyMatch[4] || "1",
+    )
+    const from = (currencyMatch[2] || currencyMatch[5] || currencyMatch[7]).toUpperCase()
+    const to = (currencyMatch[3] || currencyMatch[6] || currencyMatch[8]).toUpperCase()
 
     const response = yield* http.execute(
       HttpClientRequest.get(`${BASE_URL}/1/${from}/${to}`).pipe(
@@ -82,19 +71,25 @@ interface CurrencyData {
   to?: Array<{ mid?: number; fq?: string }>
 }
 
-function parseCurrencyResults(
+export function parseCurrencyResults(
   raw: string,
   query: string,
   from: string,
   to: string,
   amount: number = 1,
 ): SearchResult[] {
-  // DuckDuckGo 返回 JSONP，需要提取 JSON 部分
-  const jsonMatch = raw.match(/\n(.+)\n/)
-  if (!jsonMatch) return []
+  // DuckDuckGo 返回 JSONP 格式：callback_name(<json>);
+  // 提取第一个 { 到最后一个 } 之间的 JSON 内容
+  const firstBrace = raw.indexOf("{")
+  const lastBrace = raw.lastIndexOf("}")
+  if (firstBrace === -1 || lastBrace <= firstBrace) return []
 
   let parsed: unknown
-  try { parsed = JSON.parse(jsonMatch[1]) } catch { return [] }
+  try {
+    parsed = JSON.parse(raw.slice(firstBrace, lastBrace + 1))
+  } catch {
+    return []
+  }
 
   const data = parsed as CurrencyData
   const rate = data.to?.[0]?.mid

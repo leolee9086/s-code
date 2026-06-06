@@ -24,6 +24,8 @@ import * as Executor from "./executor"
 import * as Selector from "./selector"
 import * as Engine from "./engine"
 import * as Cache from "./cache"
+import * as PersistentCacheModule from "./persistent-cache"
+import * as QueryIntentModule from "./query-intent"
 
-export { Aggregator, Executor, Selector, Engine, Cache }
+export { Aggregator, Executor, Selector, Engine, Cache, PersistentCacheModule as PersistentCache, QueryIntentModule as QueryIntent }
 export * as Search from "."

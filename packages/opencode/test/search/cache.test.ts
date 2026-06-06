@@ -13,7 +13,7 @@ describe("ResultCache", () => {
 
   test("stores and retrieves results", () => {
     cache = new ResultCache(10, 60_000)
-    const key = ResultCache.makeKey("test query", 5)
+    const key = ResultCache.makeKey("test query", { numResults: 5 })
     const results = [
       makeSearchResult({ title: "Test", url: "https://example.com", snippet: "Snippet", engine: "ddg", position: 1 }),
     ]
@@ -38,10 +38,10 @@ describe("ResultCache", () => {
   })
 
   test("makeKey generates consistent keys", () => {
-    expect(ResultCache.makeKey("hello", 8)).toBe("hello|8")
-    expect(ResultCache.makeKey("hello", 8)).toBe(ResultCache.makeKey("hello", 8))
-    expect(ResultCache.makeKey("hello", 5)).not.toBe(ResultCache.makeKey("hello", 8))
-    expect(ResultCache.makeKey("foo", 8)).not.toBe(ResultCache.makeKey("bar", 8))
+    expect(ResultCache.makeKey("hello", { numResults: 8 })).toBe("hello|8||")
+    expect(ResultCache.makeKey("hello", { numResults: 8 })).toBe(ResultCache.makeKey("hello", { numResults: 8 }))
+    expect(ResultCache.makeKey("hello", { numResults: 5 })).not.toBe(ResultCache.makeKey("hello", { numResults: 8 }))
+    expect(ResultCache.makeKey("foo", { numResults: 8 })).not.toBe(ResultCache.makeKey("bar", { numResults: 8 }))
   })
 
   test("evicts oldest entry when full (LRU)", () => {

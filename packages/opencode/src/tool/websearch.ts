@@ -98,6 +98,10 @@ function callMultiEngine(
   flags: { exa: boolean; parallel: boolean },
 ): Effect.Effect<{ output: string | undefined; engines: readonly string[]; engineStatus?: string }> {
   return Effect.gen(function* () {
+    // 自动检测查询意图（覆盖 queryType），用户显式指定的优先
+    const intent = Search.QueryIntent.detectQueryIntent(params.query ?? "")
+    const effectiveQueryType = params.queryType || intent.queryType || "general"
+
     const engines = Search.Selector.selectEngines({
       brave: !!process.env.BRAVE_API_KEY,
       bilibili: true,
@@ -105,21 +109,21 @@ function callMultiEngine(
       parallel: flags.parallel,
       timeRange: params.timeRange,
       lang: params.lang,
-      queryType: params.queryType,
+      queryType: effectiveQueryType,
     })
     if (engines.length === 0) return { output: undefined, engines: [] }
 
     const numResults = params.numResults || 8
-    const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}|q:${params.queryType ?? "general"}`, numResults)
+    const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}|q:${effectiveQueryType}`, { numResults })
 
-    // 检查缓存
-    const cached = Search.Cache.globalResultCache.get(cacheKey)
+    // 检查缓存（内存热层 → SQLite 冷层 → 搜索引擎）
+    const cached = Search.PersistentCache.getWithFallback(cacheKey, Search.Cache.globalResultCache, Search.PersistentCache.persistentCache)
     if (cached && cached.length > 0) {
       const engineNames = [...new Set(cached.map(r => r.engine))]
       const aggregated = Search.Aggregator.aggregate(cached, {
         weights: new Map(engines.map(e => [e.name, e.config.weight])),
         maxResults: numResults,
-      })
+      }, params.query)
       const output = Search.Aggregator.formatResults(aggregated, params.query)
       return { output, engines: engineNames }
     }
@@ -133,16 +137,16 @@ function callMultiEngine(
     })
     const execResult = yield* Search.Executor.executeAll(engines, http, params.query, opts, state)
 
-    // 缓存成功结果
+    // 缓存成功结果（写入内存 + SQLite 双层）
     if (execResult.results.length > 0) {
-      Search.Cache.globalResultCache.set(cacheKey, execResult.results)
+      Search.PersistentCache.setWithFallback(cacheKey, execResult.results, Search.Cache.globalResultCache, Search.PersistentCache.persistentCache)
     }
 
     const weights = new Map(engines.map(e => [e.name, e.config.weight]))
     const aggregated = Search.Aggregator.aggregate(execResult.results, {
       weights,
       maxResults: numResults,
-    })
+    }, params.query)
 
     const engineNames = [...new Set(execResult.results.map(r => r.engine))]
     const output = aggregated.length > 0

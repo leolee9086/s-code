@@ -5,6 +5,9 @@
  * 借鉴 SearXNG 的多线程并发 + 熔断器模式。
  */
 import { Duration, Effect } from "effect"
+
+/** 全局搜索引擎最大并发数，防止过多并发 HTTP 请求导致网络栈过载 */
+export const MAX_CONCURRENCY = 10
 import { HttpClient } from "effect/unstable/http"
 import type { EngineStatus, SearchEngine, SearchOptions, SearchResult } from "./engine"
 import { AccessDeniedError, CaptchaError, EngineError, RateLimitError, TimeoutError, makeEngineStatus } from "./engine"
@@ -76,7 +79,7 @@ export function executeAll(
     const outcomes = yield* Effect.forEach(
       active,
       (engine) => executeEngineSafely(engine, http, query, opts, state),
-      { concurrency: "unbounded" },
+      { concurrency: MAX_CONCURRENCY },
     )
 
     const allResults: SearchResult[] = []
@@ -191,14 +194,15 @@ function executeEngineSafely(
 }
 
 /**
- * 指数退避算法
+ * 指数退避算法（含随机抖动）
  *
  * 借鉴 SearXNG 的 suspend 机制，但改用指数级增长暂停时间：
- * - 连续失败 1 次 → 暂停 1 分钟
- * - 连续失败 2 次 → 暂停 5 分钟
- * - 连续失败 3+ 次 → 暂停 15 分钟
+ * - 连续失败 1 次 → 暂停 1 分钟 ±20% 抖动
+ * - 连续失败 2 次 → 暂停 5 分钟 ±20% 抖动
+ * - 连续失败 3+ 次 → 暂停 15 分钟 ±20% 抖动
  * - 最大暂停 60 分钟（硬上限）
  *
+ * 随机抖动（jitter）防止多个引擎同时恢复时出现惊群效应。
  * 相比 SearXNG 的固定暂停（最短 ban_time_on_fail），我们的指数退避更温和，
  * 允许引擎在短时间故障后快速恢复，同时对持续故障做出更强硬的响应。
  */
@@ -207,18 +211,22 @@ function applyExponentialBackoff(status: EngineStatus, engineName: string, error
   status.totalFailures++
   status.lastError = errorMessage
 
-  const backoffMinutes = status.consecutiveFailures <= 1
+  const baseMinutes = status.consecutiveFailures <= 1
     ? 1
     : status.consecutiveFailures <= 2
       ? 5
       : 15
 
+  // 加入 ±20% 随机抖动，防止惊群效应
+  const jitter = 0.8 + Math.random() * 0.4
+  const backoffMinutes = baseMinutes * jitter
   const clamped = Math.min(backoffMinutes, 60) // 上限 60 分钟
+  const durationMs = clamped * 60 * 1000
 
   status.suspended = true
-  status.suspendedUntil = Date.now() + Duration.toMillis(Duration.minutes(clamped))
-  status.lastSuspensionReason = `exponential-backoff@${clamped}min`
-  status.lastSuspensionDuration = Duration.toMillis(Duration.minutes(clamped))
+  status.suspendedUntil = Date.now() + durationMs
+  status.lastSuspensionReason = `exponential-backoff@${baseMinutes}min(jitter=${jitter.toFixed(2)})`
+  status.lastSuspensionDuration = durationMs
 }
 
 function getOrCreateStatus(state: ExecutorState, name: string): EngineStatus {

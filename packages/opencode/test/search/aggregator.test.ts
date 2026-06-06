@@ -89,6 +89,42 @@ function makeResult(overrides: Partial<{
 }
 
 describe("aggregate", () => {
+  test("fast-path: very different lengths are not merged", () => {
+    const results = [
+      makeResult({ url: "https://example.com/a", title: "Short Title" }),
+      makeResult({ url: "https://example.com/b", title: "This is a very long title that should not match the short one via fast-path" }),
+    ]
+    const aggregated = Aggregator.aggregate(results, {
+      weights: new Map([["duckduckgo", 1.0]]),
+      maxResults: 8,
+    })
+    // Lengths differ by > 30% → fast-path skips → not merged
+    expect(aggregated.length).toBe(2)
+  })
+
+  test("snippet relevance: snippet with query keywords preferred", () => {
+    const results = [
+      makeResult({
+        engine: "duckduckgo", position: 1,
+        url: "https://example.com/a",
+        title: "TypeScript Guide",
+        snippet: "A general programming article",
+      }),
+      makeResult({
+        engine: "brave", position: 2,
+        url: "https://example.com/a",
+        title: "TypeScript Guide",
+        snippet: "Learn TypeScript types and generics in depth with examples",
+      }),
+    ]
+    const aggregated = Aggregator.aggregate(results, {
+      weights: new Map([["duckduckgo", 1.0], ["brave", 1.0]]),
+      maxResults: 8,
+    })
+    expect(aggregated.length).toBe(1)
+    // Should prefer the snippet containing "TypeScript" since it matches the title/query context
+    expect(aggregated[0].snippet).toContain("TypeScript")
+  })
   test("deduplicates identical URLs", () => {
     const results = [
       makeResult({ engine: "duckduckgo", position: 1 }),
@@ -253,6 +289,18 @@ describe("formatResults", () => {
     ]
     const output = Aggregator.formatResults(results, "query", "fallback suggestion")
     expect(output).toContain("fallback suggestion")
+  })
+
+  test("shows N+more for multi-engine results", () => {
+    const results = [
+      makeAggregatedResult({
+        title: "Multi Engine Result", url: "https://example.com",
+        snippet: "Snippet", engines: ["duckduckgo", "brave", "google"], positions: [1, 2, 3],
+      }),
+    ]
+    const output = Aggregator.formatResults(results, "query")
+    expect(output).toContain("duckduckgo")
+    expect(output).toContain("2更多")
   })
 })
 

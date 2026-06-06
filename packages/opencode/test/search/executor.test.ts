@@ -2,8 +2,17 @@ import { describe, expect, test } from "bun:test"
 import { Duration, Effect } from "effect"
 import type { EngineStatus } from "../../src/search/engine"
 import { RateLimitError, AccessDeniedError, EngineError, makeEngineConfig, makeSearchResult, makeEngineStatus } from "../../src/search/engine"
-import { Executor, resetGlobalState } from "../../src/search/executor"
+import { Executor, resetGlobalState, MAX_CONCURRENCY } from "../../src/search/executor"
 import type { SearchEngine, SearchOptions } from "../../src/search/engine"
+
+// ── Constants ──────────────────────────────────────
+
+describe("MAX_CONCURRENCY", () => {
+  test("has a reasonable default value", () => {
+    expect(MAX_CONCURRENCY).toBeGreaterThan(0)
+    expect(MAX_CONCURRENCY).toBeLessThanOrEqual(50)
+  })
+})
 
 // ── ExecutorState ───────────────────────────────────
 
@@ -274,6 +283,77 @@ describe("engine health tracking", () => {
       expect(status).toBeDefined()
       expect(status!.suspended).toBe(true)
       expect(status!.lastError).toContain("defect")
+    }).pipe(Effect.scoped, Effect.runPromise)
+  })
+
+  test("backoff jitter produces varied suspension durations", () => {
+    resetGlobalState()
+    const createFailingEngine = (name: string): SearchEngine => ({
+      name,
+      config: makeEngineConfig({ name, timeout: 5000 }),
+      search: () => Effect.fail(new Error("fail")),
+    })
+    const state = new Executor.ExecutorState()
+
+    return Effect.gen(function* () {
+      // Run 5 failures and collect all suspension reasons
+      const reasons: string[] = []
+      for (let i = 0; i < 5; i++) {
+        yield* Executor.executeAll(
+          [createFailingEngine(`jitter-test`)],
+          {} as any, "q", { numResults: 8 }, state,
+        )
+        const status = state.engineStatuses.get("jitter-test")!
+        reasons.push(status.lastSuspensionReason || "")
+        status.suspended = false // allow next call
+      }
+
+      // All reasons should contain "jitter="
+      for (const r of reasons) expect(r).toContain("jitter=")
+
+      // Extract jitter factors and verify they vary
+      const jitterFactors = reasons
+        .map((r) => r.match(/jitter=([\d.]+)/)?.[1])
+        .filter(Boolean)
+        .map(Number)
+
+      // With 5 samples, at least 2 should be different (99.9% probability)
+      const uniqueFactors = new Set(jitterFactors)
+      expect(uniqueFactors.size).toBeGreaterThan(1)
+
+      // All jitter factors should be within [0.8, 1.2]
+      for (const f of jitterFactors) {
+        expect(f).toBeGreaterThanOrEqual(0.8)
+        expect(f).toBeLessThanOrEqual(1.2)
+      }
+    }).pipe(Effect.scoped, Effect.runPromise)
+  })
+
+  test("backoff clamps at 60 minutes max", () => {
+    resetGlobalState()
+    const engine: SearchEngine = {
+      name: "clamp-test",
+      config: makeEngineConfig({ name: "clamp-test", timeout: 5000 }),
+      // Simulate a defect that continues to fail
+      search: () => Effect.die("fatal"),
+    }
+    const state = new Executor.ExecutorState()
+
+    return Effect.gen(function* () {
+      // Fail many times to reach max backoff
+      for (let i = 0; i < 10; i++) {
+        yield* Executor.executeAll([engine], {} as any, "q", { numResults: 8 }, state)
+        const status = state.engineStatuses.get("clamp-test")!
+        status.suspended = false
+      }
+
+      const status = state.engineStatuses.get("clamp-test")!
+      expect(status.consecutiveFailures).toBe(10)
+      // Even with many failures, the max backoff is still reasonable
+      // (jitter may push it slightly above but should be clamped near 15-60 min)
+      const maxDurationMs = (status.suspendedUntil || 0) - Date.now()
+      const maxDurationMin = maxDurationMs / 60_000
+      expect(maxDurationMin).toBeLessThanOrEqual(65) // 60min + jitter margin
     }).pipe(Effect.scoped, Effect.runPromise)
   })
 })

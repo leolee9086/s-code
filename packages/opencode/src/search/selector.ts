@@ -102,6 +102,35 @@ import { makeSeznam } from "./engines/seznam"
 import { makeAol } from "./engines/aol"
 import { makeGmx } from "./engines/gmx"
 import { makeYep } from "./engines/yep"
+import { makeGitea } from "./engines/gitea"
+import { makeSourceHut } from "./engines/sourcehut"
+import { makeDictzone } from "./engines/dictzone"
+import { makeDuden } from "./engines/duden"
+import { makeBitchute } from "./engines/bitchute"
+import { makeAcfun } from "./engines/acfun"
+import { makeSogouVideos } from "./engines/sogou-videos"
+import { makeSogouImages } from "./engines/sogou-images"
+import { makeZhihu } from "./engines/zhihu"
+import { makeXiaohongshu } from "./engines/xiaohongshu"
+import { makeEmojipedia } from "./engines/emojipedia"
+import { makeCara } from "./engines/cara"
+import { makeOpenClipArt } from "./engines/openclipart"
+import { makeIpernity } from "./engines/ipernity"
+import { makeUxwing } from "./engines/uxwing"
+import { makeFlaticon } from "./engines/flaticon"
+import { makeTagesschau } from "./engines/tagesschau"
+import { makeSelfhst } from "./engines/selfhst"
+import { makeDevicons } from "./engines/devicons"
+import { makeLucide } from "./engines/lucide"
+import { makeMaterialIcons } from "./engines/material-icons"
+import { makeHex } from "./engines/hex"
+import { makeMicrosoftLearn } from "./engines/microsoft-learn"
+import { makeAnsa } from "./engines/ansa"
+import { makeSensCritique } from "./engines/senscritique"
+import { makePdbe } from "./engines/pdbe"
+import { makeMoviepilot } from "./engines/moviepilot"
+import { makeAnnasArchive } from "./engines/annas-archive"
+import { makeIqiyi } from "./engines/iqiyi"
 
 
 /**
@@ -371,6 +400,54 @@ export function selectEngines(
     })))
   }
 
+  // BitChute — 替代视频平台
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeBitchute(makeEngineConfig({
+      name: "bitchute",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // AcFun — 中文视频平台
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeAcfun(makeEngineConfig({
+      name: "acfun",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // iQiyi — 中文视频搜索
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeIqiyi(makeEngineConfig({
+      name: "iqiyi",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 搜狗视频 — 中文短视频搜索
+  if (!flags || flags?.queryType === "video") {
+    engines.push(makeSogouVideos(makeEngineConfig({
+      name: "sogou-videos",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // 搜狗微信 — 微信公众号文章搜索
   if (!flags || flags?.queryType === "news" || flags?.queryType === "social") {
     engines.push(makeSogouWeChat(makeEngineConfig({
@@ -493,6 +570,18 @@ export function selectEngines(
     })))
   }
 
+  // 搜狗图片 — 中文图片搜索
+  if (!flags) {
+    engines.push(makeSogouImages(makeEngineConfig({
+      name: "sogou-images",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // Bing Videos — 视频搜索
   if (!flags) {
     engines.push(makeBingVideos(makeEngineConfig({
@@ -573,6 +662,30 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 知乎 — 中文问答平台（直连，替代 site-scoped）
+  if (!flags) {
+    engines.push(makeZhihu(makeEngineConfig({
+      name: "zhihu",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 小红书 — 中文生活方式平台（直连，替代 site-scoped）
+  if (!flags) {
+    engines.push(makeXiaohongshu(makeEngineConfig({
+      name: "xiaohongshu",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
       requiresKey: false,
     })))
   }
@@ -667,6 +780,22 @@ export function selectEngines(
       priority: 1,
       requiresKey: false,
     })))
+    engines.push(makeGitea(makeEngineConfig({
+      name: "gitea",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    engines.push(makeSourceHut(makeEngineConfig({
+      name: "sourcehut",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
   }
 
   // 百科类查询：Wikipedia
@@ -742,6 +871,22 @@ export function selectEngines(
       priority: 0,
       requiresKey: false,
     })))
+    engines.push(makeHex(makeEngineConfig({
+      name: "hex",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    engines.push(makeMicrosoftLearn(makeEngineConfig({
+      name: "microsoft-learn",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
   }
 
   // Python 包搜索：PyPI
@@ -788,6 +933,30 @@ export function selectEngines(
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 1,
+      requiresKey: false,
+    })))
+    engines.push(makePdbe(makeEngineConfig({
+      name: "pdbe",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    engines.push(makeMoviepilot(makeEngineConfig({
+      name: "moviepilot",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    engines.push(makeAnnasArchive(makeEngineConfig({
+      name: "annas-archive",
+      weight: 0.4,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 0,
       requiresKey: false,
     })))
   }
@@ -1068,6 +1237,42 @@ export function selectEngines(
     })))
   }
 
+  // Tagesschau — 德国新闻
+  if (!flags || flags?.queryType === "news") {
+    engines.push(makeTagesschau(makeEngineConfig({
+      name: "tagesschau",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // ANSA — 意大利新闻
+  if (!flags || flags?.queryType === "news") {
+    engines.push(makeAnsa(makeEngineConfig({
+      name: "ansa",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // SensCritique — 法国评论平台
+  if (!flags || flags?.queryType === "general") {
+    engines.push(makeSensCritique(makeEngineConfig({
+      name: "senscritique",
+      weight: 0.4,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
   // 音乐搜索：Mixcloud
   if (!flags || flags?.queryType === "social") {
     engines.push(makeMixcloud(makeEngineConfig({
@@ -1135,6 +1340,114 @@ export function selectEngines(
       weight: 0.7,
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Cara — 艺术家社区（反 AI 生成艺术）
+  if (!flags) {
+    engines.push(makeCara(makeEngineConfig({
+      name: "cara",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // OpenClipArt — 免费矢量图搜索
+  if (!flags) {
+    engines.push(makeOpenClipArt(makeEngineConfig({
+      name: "openclipart",
+      weight: 0.4,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Ipernity — 摄影社区
+  if (!flags) {
+    engines.push(makeIpernity(makeEngineConfig({
+      name: "ipernity",
+      weight: 0.4,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // UXWing — 免费图标
+  if (!flags) {
+    engines.push(makeUxwing(makeEngineConfig({
+      name: "uxwing",
+      weight: 0.3,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Flaticon — 免费图标
+  if (!flags) {
+    engines.push(makeFlaticon(makeEngineConfig({
+      name: "flaticon",
+      weight: 0.3,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Selfhst — 自托管图标
+  if (!flags) {
+    engines.push(makeSelfhst(makeEngineConfig({
+      name: "selfhst",
+      weight: 0.2,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Devicons — 开发者图标
+  if (!flags) {
+    engines.push(makeDevicons(makeEngineConfig({
+      name: "devicons",
+      weight: 0.2,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 3,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Lucide — 开源图标
+  if (!flags) {
+    engines.push(makeLucide(makeEngineConfig({
+      name: "lucide",
+      weight: 0.2,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 3,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // Material Icons — Google 材质图标
+  if (!flags) {
+    engines.push(makeMaterialIcons(makeEngineConfig({
+      name: "material-icons",
+      weight: 0.2,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 3,
       priority: 0,
       requiresKey: false,
     })))
@@ -1291,6 +1604,34 @@ export function selectEngines(
       weight: 0.6,
       timeout: Duration.toMillis(Duration.seconds(20)),
       maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 词典类查询：Dictzone（多语互译）+ Duden（德语词典）
+  if (!flags) {
+    engines.push(makeDictzone(makeEngineConfig({
+      name: "dictzone",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    engines.push(makeDuden(makeEngineConfig({
+      name: "duden",
+      weight: 0.5,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    engines.push(makeEmojipedia(makeEngineConfig({
+      name: "emojipedia",
+      weight: 0.4,
+      timeout: Duration.toMillis(Duration.seconds(10)),
+      maxResults: 3,
       priority: 0,
       requiresKey: false,
     })))
