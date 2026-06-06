@@ -267,6 +267,8 @@ function extractSource(url: string): string {
       "ebay.de": "eBay",
       "vip.com": "唯品会",
       "1688.com": "1688批发",
+      "dangdang.com": "当当",
+      "kaola.com": "考拉海购",
     }
     return map[hostname] || hostname
   } catch {

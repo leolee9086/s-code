@@ -31,6 +31,9 @@ export const Parameters = Schema.Struct({
   queryType: Schema.optional(Schema.Literals(["general", "news", "video", "academic", "code", "shopping"])).annotate({
     description: "查询类型 - 'general'（默认，通用搜索）、'news'（新闻搜索，启用新闻和微信引擎）、'video'（视频搜索，启用 Bilibili 引擎）、'academic'（学术搜索，启用 Arxiv/Semantic Scholar/Wikipedia）、'code'（代码搜索，启用 GitHub）、'shopping'（购物比价，启用 SMZDM/京东/淘宝等引擎）",
   }),
+  platforms: Schema.optional(Schema.String).annotate({
+    description: "（仅 queryType='shopping' 时生效）指定购物平台，逗号分隔。可选值: smzdm, jd, taobao, tmall, pdd, suning, gome, vip, 1688, dangdang, kaola, amazon-cn, amazon-us, ebay。示例: 'jd,taobao,pdd'",
+  }),
 })
 
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel", "duckduckgo"])
@@ -113,6 +116,18 @@ function callMultiEngine(
     })
     if (engines.length === 0) return { output: undefined, engines: [] }
 
+    // 如果指定了 platforms 参数，只保留匹配的购物引擎
+    const shoppingEngines = new Set([
+      "smzdm", "jd", "taobao", "tmall", "pdd", "suning", "gome",
+      "vip", "1688", "dangdang", "kaola", "amazon-cn", "amazon-us", "ebay",
+    ])
+    const selectedPlatforms = params.platforms
+      ?.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean)
+    const filteredEngines = (selectedPlatforms && selectedPlatforms.length > 0 && effectiveQueryType === "shopping")
+      ? engines.filter((e) => !shoppingEngines.has(e.name) || selectedPlatforms.includes(e.name))
+      : engines
+    if (filteredEngines.length === 0) return { output: undefined, engines: [] }
+
     const numResults = params.numResults || 8
     const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}|q:${effectiveQueryType}`, { numResults })
 
@@ -121,7 +136,7 @@ function callMultiEngine(
     if (cached && cached.length > 0) {
       const engineNames = [...new Set(cached.map(r => r.engine))]
       const aggregated = Search.Aggregator.aggregate(cached, {
-        weights: new Map(engines.map(e => [e.name, e.config.weight])),
+        weights: new Map(filteredEngines.map(e => [e.name, e.config.weight])),
         maxResults: numResults,
       }, params.query)
       const output = effectiveQueryType === "shopping" && aggregated.some(r => r.category === "shopping")
@@ -137,14 +152,14 @@ function callMultiEngine(
       timeRange: params.timeRange,
       lang: params.lang,
     })
-    const execResult = yield* Search.Executor.executeAll(engines, http, params.query, opts, state)
+    const execResult = yield* Search.Executor.executeAll(filteredEngines, http, params.query, opts, state)
 
     // 缓存成功结果（写入内存 + SQLite 双层）
     if (execResult.results.length > 0) {
       Search.PersistentCache.setWithFallback(cacheKey, execResult.results, Search.Cache.globalResultCache, Search.PersistentCache.persistentCache)
     }
 
-    const weights = new Map(engines.map(e => [e.name, e.config.weight]))
+    const weights = new Map(filteredEngines.map(e => [e.name, e.config.weight]))
     const aggregated = Search.Aggregator.aggregate(execResult.results, {
       weights,
       maxResults: numResults,

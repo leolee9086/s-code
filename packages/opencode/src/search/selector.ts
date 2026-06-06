@@ -162,6 +162,8 @@ import { makeGome } from "./engines/gome"
 import { makeAmazonUs } from "./engines/amazon-us"
 import { makeVip } from "./engines/vip"
 import { makeYipin } from "./engines/yipin"
+import { makeDangdang } from "./engines/dangdang"
+import { makeKaola } from "./engines/kaola"
 
 
 /**
@@ -1206,6 +1208,30 @@ export function selectEngines(
       name: "1688",
       weight: 0.6,
       timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：当当网
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeDangdang(makeEngineConfig({
+      name: "dangdang",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：考拉海购
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeKaola(makeEngineConfig({
+      name: "kaola",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 1,
       requiresKey: false,
