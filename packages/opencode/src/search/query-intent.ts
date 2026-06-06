@@ -9,7 +9,7 @@ import type { SearchEngine } from "./engine"
 // ── 意图类型 ──────────────────────────────────────────
 
 export interface QueryIntent {
-  queryType?: "general" | "code" | "news" | "academic" | "social" | "video"
+  queryType?: "general" | "code" | "news" | "academic" | "social" | "video" | "shopping"
   isTranslation?: boolean
   isCurrency?: boolean
   isWeather?: boolean
@@ -42,6 +42,10 @@ const TRANSLATION_CN = /翻译|意思|定义|词典|字典|释义/
 
 // URL 模式
 const URL_PATTERN = /^https?:\/\//i
+
+// 购物/比价关键词
+const SHOPPING_PATTERN = /\b(price|buy|shop|deal|discount|coupon|cheap|best price|compare|purchase|order)\b/i
+const SHOPPING_CN = /价格|多少钱|报价|售价|优惠|打折|促销|比价|性价比|购买|商城|旗舰店|专柜|正品|包邮|多少钱一个|什么价|值得买|评测|测评/
 
 // 视频关键词
 const VIDEO_PATTERN = /\b(watch|video|episode|trailer|clip)\b/i
@@ -111,7 +115,12 @@ export function detectQueryIntent(query: string): QueryIntent {
     return { queryType: "academic" }
   }
 
-  // 7. 视频（在新闻前检测，避免"最新电影预告"被新闻捕获）
+  // 7. 购物/比价
+  if (SHOPPING_PATTERN.test(trimmed) || SHOPPING_CN.test(trimmed)) {
+    return { queryType: "shopping" }
+  }
+
+  // 8. 视频（在新闻前检测，避免"最新电影预告"被新闻捕获）
   if (VIDEO_PATTERN.test(trimmed) || VIDEO_CN.test(trimmed)) {
     return { queryType: "video" }
   }
@@ -166,9 +175,13 @@ export function optimizeQuery(query: string, intent: QueryIntent): string[] {
     variants.push(`${trimmed} journal`)
   } else if (intent.queryType === "news") {
     variants.push(`${trimmed} latest news`)
-  } else if (intent.queryType === "video") {
-    variants.push(`${trimmed} video`)
-  } else if (intent.isTranslation) {
+    } else if (intent.queryType === "video") {
+      variants.push(`${trimmed} video`)
+    } else if (intent.queryType === "shopping") {
+      variants.push(`${trimmed} 价格`)
+      variants.push(`${trimmed} 优惠`)
+      variants.push(`${trimmed} 评测`)
+    } else if (intent.isTranslation) {
     variants.push(`${trimmed} meaning`)
     variants.push(`${trimmed} definition`)
   } else if (intent.isWeather) {

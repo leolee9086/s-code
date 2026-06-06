@@ -28,8 +28,8 @@ export const Parameters = Schema.Struct({
   lang: Schema.optional(Schema.String).annotate({
     description: "语言偏好（如 'zh-CN'、'en'、'ja'），用于获取特定语言的结果",
   }),
-  queryType: Schema.optional(Schema.Literals(["general", "news", "video", "academic", "code"])).annotate({
-    description: "查询类型 - 'general'（默认，通用搜索）、'news'（新闻搜索，启用新闻和微信引擎）、'video'（视频搜索，启用 Bilibili 引擎）、'academic'（学术搜索，启用 Arxiv/Semantic Scholar/Wikipedia）、'code'（代码搜索，启用 GitHub）",
+  queryType: Schema.optional(Schema.Literals(["general", "news", "video", "academic", "code", "shopping"])).annotate({
+    description: "查询类型 - 'general'（默认，通用搜索）、'news'（新闻搜索，启用新闻和微信引擎）、'video'（视频搜索，启用 Bilibili 引擎）、'academic'（学术搜索，启用 Arxiv/Semantic Scholar/Wikipedia）、'code'（代码搜索，启用 GitHub）、'shopping'（购物比价，启用 SMZDM/京东/淘宝等引擎）",
   }),
 })
 
@@ -124,7 +124,9 @@ function callMultiEngine(
         weights: new Map(engines.map(e => [e.name, e.config.weight])),
         maxResults: numResults,
       }, params.query)
-      const output = Search.Aggregator.formatResults(aggregated, params.query)
+      const output = effectiveQueryType === "shopping" && aggregated.some(r => r.category === "shopping")
+        ? Search.PriceCompare.formatShoppingReport(aggregated, params.query)
+        : Search.Aggregator.formatResults(aggregated, params.query)
       return { output, engines: engineNames }
     }
 
@@ -150,7 +152,9 @@ function callMultiEngine(
 
     const engineNames = [...new Set(execResult.results.map(r => r.engine))]
     const output = aggregated.length > 0
-      ? Search.Aggregator.formatResults(aggregated, params.query)
+      ? (effectiveQueryType === "shopping" && aggregated.some(r => r.category === "shopping")
+        ? Search.PriceCompare.formatShoppingReport(aggregated, params.query)
+        : Search.Aggregator.formatResults(aggregated, params.query))
       : undefined
 
     // 生成引擎健康状态报告（用于调试）

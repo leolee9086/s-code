@@ -152,6 +152,16 @@ import { makeFindThatMeme } from "./engines/findthatmeme"
 import { makeApkMirror } from "./engines/apkmirror"
 import { makeFyyd } from "./engines/fyyd"
 import { makeScanr } from "./engines/scanr"
+import { makeSmzdm } from "./engines/smzdm"
+import { makeJd } from "./engines/jd"
+import { makeTaobao } from "./engines/taobao"
+import { makePdd } from "./engines/pdd"
+import { makeAmazonCn } from "./engines/amazon-cn"
+import { makeSuning } from "./engines/suning"
+import { makeGome } from "./engines/gome"
+import { makeAmazonUs } from "./engines/amazon-us"
+import { makeVip } from "./engines/vip"
+import { makeYipin } from "./engines/yipin"
 
 
 /**
@@ -197,7 +207,7 @@ export interface SelectFlags {
   /** 站点限定搜索：启用特定平台，空数组 = 禁用全部，不传 = 使用默认列表 */
   siteScoped?: readonly string[]
   /** 查询类型提示，用于智能选择相关引擎 */
-  queryType?: "general" | "code" | "news" | "academic" | "social" | "video"
+  queryType?: "general" | "code" | "news" | "academic" | "social" | "video" | "shopping"
   /** 优先返回最新结果 */
   timeRange?: "day" | "week" | "month" | "year"
   /** 语言偏好 */
@@ -1071,13 +1081,133 @@ export function selectEngines(
   }
 
   // 购物搜索：eBay
-  if (!flags) {
+  if (!flags || flags?.queryType === "shopping") {
     engines.push(makeEbay(makeEngineConfig({
       name: "ebay",
       weight: 0.7,
       timeout: Duration.toMillis(Duration.seconds(15)),
       maxResults: 5,
       priority: 0,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：什么值得买 (SMZDM)
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeSmzdm(makeEngineConfig({
+      name: "smzdm",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 8,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：京东 (JD.com)
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeJd(makeEngineConfig({
+      name: "jd",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：淘宝/天猫
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeTaobao(makeEngineConfig({
+      name: "taobao",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：拼多多
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makePdd(makeEngineConfig({
+      name: "pdd",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：亚马逊中国
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeAmazonCn(makeEngineConfig({
+      name: "amazon-cn",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：苏宁易购
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeSuning(makeEngineConfig({
+      name: "suning",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：国美
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeGome(makeEngineConfig({
+      name: "gome",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：Amazon.com (US)
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeAmazonUs(makeEngineConfig({
+      name: "amazon-us",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：唯品会
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeVip(makeEngineConfig({
+      name: "vip",
+      weight: 0.7,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: false,
+    })))
+  }
+
+  // 比价购物：1688（阿里巴巴批发）
+  if (!flags || flags?.queryType === "shopping") {
+    engines.push(makeYipin(makeEngineConfig({
+      name: "1688",
+      weight: 0.6,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 1,
       requiresKey: false,
     })))
   }

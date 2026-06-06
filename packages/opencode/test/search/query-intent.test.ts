@@ -72,6 +72,32 @@ describe("detectQueryIntent", () => {
     expect(detectQueryIntent("B站视频").queryType).toBe("video")
   })
 
+  test("detects shopping queries in English", () => {
+    expect(detectQueryIntent("iPhone 16 price").queryType).toBe("shopping")
+    expect(detectQueryIntent("buy gaming laptop").queryType).toBe("shopping")
+    expect(detectQueryIntent("best price for SSD").queryType).toBe("shopping")
+    expect(detectQueryIntent("discount coupon code").queryType).toBe("shopping")
+    expect(detectQueryIntent("compare phone prices").queryType).toBe("shopping")
+  })
+
+  test("detects shopping queries in Chinese", () => {
+    expect(detectQueryIntent("iPhone 16 价格").queryType).toBe("shopping")
+    expect(detectQueryIntent("戴森吸尘器多少钱").queryType).toBe("shopping")
+    expect(detectQueryIntent("机械键盘 优惠").queryType).toBe("shopping")
+    expect(detectQueryIntent("空调 比价").queryType).toBe("shopping")
+    expect(detectQueryIntent("笔记本电脑 性价比").queryType).toBe("shopping")
+    expect(detectQueryIntent("跑步机 报价").queryType).toBe("shopping")
+    expect(detectQueryIntent("耳机 促销").queryType).toBe("shopping")
+    expect(detectQueryIntent("手机 值得买").queryType).toBe("shopping")
+  })
+
+  test("does not misclassify non-shopping queries as shopping", () => {
+    // These queries do not contain any shopping keywords
+    expect(detectQueryIntent("machine learning tutorial").queryType).toBe("code")
+    expect(detectQueryIntent("history of mathematics").queryType).toBe("general")
+    expect(detectQueryIntent("population of china").queryType).toBe("general")
+  })
+
   test("defaults to general for plain queries", () => {
     expect(detectQueryIntent("best restaurants in Tokyo").queryType).toBe("general")
     expect(detectQueryIntent("history of coffee").queryType).toBe("general")
@@ -110,6 +136,13 @@ describe("optimizeQuery", () => {
   test("video query gets video variant", () => {
     const variants = optimizeQuery("cat", { queryType: "video" })
     expect(variants).toContain("cat video")
+  })
+
+  test("shopping query gets price/coupon/review variants", () => {
+    const variants = optimizeQuery("iPhone", { queryType: "shopping" })
+    expect(variants).toContain("iPhone 价格")
+    expect(variants).toContain("iPhone 优惠")
+    expect(variants).toContain("iPhone 评测")
   })
 
   test("translation intent gets meaning/definition variants", () => {

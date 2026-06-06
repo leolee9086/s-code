@@ -365,6 +365,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   academic: "学术",
   news: "新闻",
   social: "社交",
+  shopping: "购物比价",
   encyclopedia: "百科",
 }
 
