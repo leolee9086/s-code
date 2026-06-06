@@ -10,6 +10,12 @@ import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
 import { isEvolveMode, readEvolveMessage, writeEvolveMessage } from "../evolve/file-protocol"
+import { isForeverMode, setForeverMode, clearForeverMode, checkBudget } from "../forever/forever"
+import type { ForeverConfigShape } from "../forever/forever"
+import { ForeverState } from "../forever/state"
+import { ForeverCondition } from "../forever/condition"
+import { resolveForeverPrompt } from "../forever/prompt"
+import { EffectBridge } from "@/effect/bridge"
 import { Injection } from "./injection"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
@@ -138,6 +144,8 @@ export const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const { db } = database
+    const foreverStateOption = yield* Effect.serviceOption(ForeverState.StatePersistenceService)
+    const conditionEngineOption = yield* Effect.serviceOption(ForeverCondition.ConditionEngineService)
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
@@ -1103,6 +1111,14 @@ export const layer = Layer.effect(
           delete process.env["S_CODE_EVOLVE"]
           log.info("evolve mode exited by prefix command", { sessionID: input.sessionID })
         }
+        if (info.builtin === "enter-forever") {
+          setForeverMode()
+          log.info("forever mode entered by prefix command", { sessionID: input.sessionID })
+        }
+        if (info.builtin === "exit-forever") {
+          clearForeverMode()
+          log.info("forever mode exited by prefix command", { sessionID: input.sessionID })
+        }
       }
 
       const partsToResolve = input.parts.map((part, i) => {
@@ -1115,6 +1131,8 @@ export const layer = Layer.effect(
           case "unban": feedback = `[指令已执行: 允许 "${args}"]`; break
           case "enter-evolve": feedback = `[指令已执行: 进入进化模式]${args.trim() ? " " + args.trim() : ""}`; break
           case "exit-evolve": feedback = `[指令已执行: 退出进化模式]`; break
+          case "enter-forever": feedback = `[指令已执行: 进入永续模式]${args.trim() ? " " + args.trim() : ""}`; break
+          case "exit-forever": feedback = `[指令已执行: 退出永续模式]`; break
           default: feedback = `[指令已执行]`
         }
         return { ...part, text: feedback }
@@ -1301,6 +1319,8 @@ export const layer = Layer.effect(
         const slog = elog.with({ sessionID })
         let structured: unknown
         let step = 0
+        let consecutiveErrors = 0
+        const ERROR_STORM_THRESHOLD = 3
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1326,7 +1346,78 @@ export const layer = Layer.effect(
               (part) => part.type === "tool" && !part.metadata?.providerExecuted && !isOrphanedInterruptedTool(part),
             ) ?? false
 
-          if (
+          // 永续模式：通过 budget、条件引擎、plugin hook 共同决定是否继续
+          if (isForeverMode() && !session.parentID) {
+            const cfg = yield* config.get()
+            const foreverCfg = cfg.forever as ForeverConfigShape | undefined
+
+            // 0. 错误风暴检测 — 连续 N 轮 LLM 返回 error 时自动退出
+            if (lastAssistant?.error) {
+              consecutiveErrors++
+            } else {
+              consecutiveErrors = 0
+            }
+            if (consecutiveErrors >= ERROR_STORM_THRESHOLD) {
+              yield* slog.warn("exiting loop (too many consecutive errors)", { count: consecutiveErrors })
+              break
+            }
+
+            // 1. Budget 检查（仅在 StatePersistenceService 可用时）
+            if (Option.isSome(foreverStateOption)) {
+              const svc = foreverStateOption.value
+              const budgetState = yield* svc.readBudgetState(sessionID)
+              const budget = checkBudget(foreverCfg, budgetState)
+              if (!budget.allowed) {
+                yield* slog.info("exiting loop (forever budget exhausted)", { reason: budget.reason })
+                break
+              }
+            }
+
+            // 2. 条件引擎检查 — 仅在有条件配置时阻塞等待（服务可选）
+            const hasConditions = !!(foreverCfg?.conditions?.file_watch?.enabled || foreverCfg?.conditions?.timer?.enabled)
+            if (hasConditions && Option.isSome(conditionEngineOption)) {
+              const engine = conditionEngineOption.value
+              const cs = yield* engine.getState()
+              const shouldResume = yield* engine.shouldResume(cs)
+              if (!shouldResume) {
+                yield* slog.info("loop waiting (forever conditions not met)")
+                break
+              }
+            }
+
+            // 3. Plugin hook — 允许外部控制器决定是否继续
+            const continueResult: {
+              shouldContinue: boolean
+              reason?: string
+              sleepMs?: number
+              conditionState?: Record<string, unknown>
+            } = yield* plugin.trigger(
+              "loop.continue",
+              {
+                sessionID,
+                round: step,
+                lastFinish: lastAssistant?.finish,
+                hasToolCalls,
+                isForeverMode: true,
+              },
+              { shouldContinue: true },
+            )
+            if (!continueResult.shouldContinue) {
+              yield* slog.info("exiting loop (forever mode plugin declined)")
+              break
+            }
+
+            // 3.5. 支持 sleepMs — 插件要求在下轮之前等待
+            if (continueResult.sleepMs && continueResult.sleepMs > 0) {
+              yield* slog.info("sleeping before next forever round", { sleepMs: continueResult.sleepMs })
+              yield* Effect.sleep(`${continueResult.sleepMs} millis`)
+            }
+
+            // 4. 更新 budget 状态（轮次计数）
+            if (Option.isSome(foreverStateOption)) {
+              yield* foreverStateOption.value.updateBudgetState(sessionID, { rounds: 1 })
+            }
+          } else if (
             lastAssistant?.finish &&
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
@@ -1587,6 +1678,61 @@ export const layer = Layer.effect(
               return "continue" as const
               }
             }
+
+            // 永续模式：通过 plugin hook 注入合成消息以继续循环
+            if (isForeverMode() && !session.parentID) {
+              const injectResult = yield* plugin.trigger<"loop.inject">(
+                "loop.inject",
+                {
+                  sessionID,
+                  round: step,
+                  lastFinish: handle.message.finish,
+                  isForeverMode: true,
+                },
+                { parts: [] },
+              )
+              const injectedParts = injectResult.parts as Array<{ type: "text"; text: string; synthetic?: boolean }>
+              // 默认行为：无插件处理时使用配置的永续 prompt 自动续行
+              const defaultPrompt = (yield* config.get()).forever?.prompt?.default ?? "Continue the forever mode task."
+              const parts = injectedParts.length > 0
+                ? injectedParts
+                : [{ type: "text" as const, text: defaultPrompt, synthetic: true as const }]
+              const continueMsg: SessionLegacy.User = {
+                id: MessageID.ascending(),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(continueMsg)
+              for (const p of parts) {
+                yield* sessions.updatePart({
+                  id: PartID.ascending(),
+                  messageID: continueMsg.id,
+                  sessionID,
+                  type: "text",
+                  text: p.text,
+                  synthetic: p.synthetic ?? true,
+                } satisfies SessionLegacy.TextPart)
+              }
+              // 永续模式注入后检查 compaction overflow，防止消息无限积累
+              if (lastFinished && lastFinished.summary !== true) {
+                const overflow = yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }).pipe(
+                  Effect.catch(() => Effect.succeed(false)),
+                )
+                if (overflow) {
+                  yield* compaction.create({
+                    sessionID,
+                    agent: lastUser.agent,
+                    model: lastUser.model,
+                    auto: true,
+                    overflow: true,
+                  })
+                }
+              }
+              return "continue" as const
+            }
             if (result === "stop") return "break" as const
             if (result === "compact") {
               yield* compaction.create({
@@ -1656,6 +1802,10 @@ export const layer = Layer.effect(
       },
     )
 
+    // 永续模式背景轮询：按间隔检查条件引擎，条件满足时自动重新进入循环
+    // 使用 let 提前声明以解决 loop 函数中的前向引用
+    let foreverPollLoop: (sessionID: SessionID) => Effect.Effect<void>
+
     const loop: (input: LoopInput) => Effect.Effect<SessionLegacy.WithParts> = Effect.fn("SessionPrompt.loop")(
       function* (input: LoopInput) {
         // 进化模式：如有待处理的续进消息，自动创建一条用户消息并持久化到数据库。
@@ -1696,9 +1846,100 @@ export const layer = Layer.effect(
             }
           }
         }
-        return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+        // 永续模式：进入时自动注入一条续行用户消息，驱动循环运行
+        if (isForeverMode()) {
+          const foreverSession = yield* sessions.get(input.sessionID).pipe(Effect.option)
+          if (Option.isSome(foreverSession) && !foreverSession.value.parentID) {
+            // 创建 EffectBridge，用于在 setInterval 回调中注入后缀消息
+            const foreverBridge = yield* EffectBridge.make()
+            // 初始化条件引擎（如配置了 file_watch/timer，服务可选）
+            const cfg = yield* config.get()
+            const foreverCfg = cfg.forever as ForeverConfigShape | undefined
+            if (foreverCfg?.conditions && Option.isSome(conditionEngineOption)) {
+              const notifyText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
+              yield* conditionEngineOption.value.init(
+                foreverCfg.conditions,
+                // 条件满足时通过 bridge 注入后缀消息，为下一轮循环准备
+                () => {
+                  foreverBridge.fork(
+                    injection.setSuffixOnce(input.sessionID, [
+                      { type: "text" as const, text: notifyText, synthetic: true },
+                    ]),
+                  )
+                },
+              ).pipe(Effect.ignore)
+            }
+            // 初始化 budget 状态（服务可选）
+            if (Option.isSome(foreverStateOption)) {
+              yield* foreverStateOption.value.readBudgetState(input.sessionID).pipe(Effect.ignore)
+            }
+
+            const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
+              Effect.provideService(Database.Service, database),
+            )
+            const { user: lastUser } = MessageV2.latest(msgs)
+            // 只在最后一条消息是 assistant 且非 tool-calls 中止时注入
+            const lastAssistantMsgDone = msgs.findLast((m) => m.info.role === "assistant") as
+              | (SessionLegacy.WithParts & { info: SessionLegacy.Assistant })
+              | undefined
+            const shouldInject = !!(lastUser && lastAssistantMsgDone &&
+              lastAssistantMsgDone.info.id > lastUser.id &&
+              lastAssistantMsgDone.info.finish &&
+              !["tool-calls"].includes(lastAssistantMsgDone.info.finish))
+            if (shouldInject) {
+              const source = cfg.forever?.prompt?.source as { type: string; command?: string; args?: string[]; url?: string; text?: string } | undefined
+              const defaultText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
+              const prompt = yield* resolveForeverPrompt(source, defaultText)
+              const continueMsg: SessionLegacy.User = {
+                id: MessageID.ascending(),
+                sessionID: input.sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(continueMsg)
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                messageID: continueMsg.id,
+                sessionID: input.sessionID,
+                type: "text",
+                text: prompt,
+                synthetic: true,
+              } satisfies SessionLegacy.TextPart)
+            }
+          }
+        }
+
+        const loopResult = yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+
+        // 永续模式：循环退出后启动背景轮询 fiber，等待条件满足后自动重新进入
+        if (isForeverMode() && Option.isSome(conditionEngineOption)) {
+          yield* Effect.forkIn(scope)(foreverPollLoop(input.sessionID)).pipe(Effect.asVoid)
+        }
+
+        return loopResult
       },
     )
+
+    // 永续模式背景轮询实现：在 loop 定义之后赋值
+    foreverPollLoop = Effect.fn("SessionPrompt.foreverPollLoop")(function* (sessionID: SessionID) {
+      const pollLog = elog.with({ sessionID })
+      yield* pollLog.info("forever poll loop started")
+      while (isForeverMode()) {
+        yield* Effect.sleep("2 seconds")
+        if (Option.isSome(conditionEngineOption)) {
+          const engine = conditionEngineOption.value
+          const cs = yield* engine.getState()
+          const shouldResume = yield* engine.shouldResume(cs).pipe(Effect.catch(() => Effect.succeed(false)))
+          if (shouldResume) {
+            yield* pollLog.info("forever conditions met, re-entering loop")
+            yield* loop({ sessionID }).pipe(Effect.ignore)
+          }
+        }
+      }
+      yield* pollLog.info("forever poll loop ended")
+    })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionLegacy.WithParts, Session.BusyError> = Effect.fn(
       "SessionPrompt.shell",
@@ -1710,10 +1951,18 @@ export const layer = Layer.effect(
     const command = Effect.fn("SessionPrompt.command")(function* (input: CommandInput) {
       yield* elog.info("command", { sessionID: input.sessionID, command: input.command, agent: input.agent })
 
-      // 内建命令：停止进化模式
+      // 内建命令：停止进化/永续模式
       if (input.command === "stop-evolve") {
         delete process.env["S_CODE_EVOLVE"]
         yield* elog.info("evolve mode stopped by slash command")
+        return yield* lastAssistant(input.sessionID)
+      }
+      if (input.command === "stop-forever") {
+        clearForeverMode()
+        if (Option.isSome(conditionEngineOption)) {
+          yield* conditionEngineOption.value.dispose()
+        }
+        yield* elog.info("forever mode stopped by slash command")
         return yield* lastAssistant(input.sessionID)
       }
 

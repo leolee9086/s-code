@@ -35,6 +35,7 @@ import { JsonMigration } from "@/storage/json-migration"
 import { Database } from "@opencode-ai/core/database/database"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
+import { SpawnCommand } from "./cli/cmd/spawn"
 import { Heap } from "./cli/heap"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
@@ -184,6 +185,7 @@ const cli = yargs(args)
   .command(SessionCommand)
   .command(PluginCommand)
   .command(DbCommand)
+  .command(SpawnCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

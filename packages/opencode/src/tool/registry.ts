@@ -15,6 +15,8 @@ import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { SessionQueryTool } from "./session_query"
 import { SessionMessageReadTool } from "./session_message_read"
+import { SpawnTool } from "./spawn"
+import { RelayMessageTool } from "./relay-message"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -136,6 +138,8 @@ export const layer: Layer.Layer<
     const skilltool = yield* SkillTool
     const sessionQuery = yield* SessionQueryTool
     const sessionMsgRead = yield* SessionMessageReadTool
+    const spawn = yield* SpawnTool
+    const relayMsg = yield* RelayMessageTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -246,6 +250,8 @@ export const layer: Layer.Layer<
           plan: Tool.init(plan),
           session_query: Tool.init(sessionQuery),
           session_message_read: Tool.init(sessionMsgRead),
+          spawn: Tool.init(spawn),
+          relay_message: Tool.init(relayMsg),
         })
 
         return {
@@ -269,6 +275,8 @@ export const layer: Layer.Layer<
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
             tool.session_query,
             tool.session_message_read,
+            tool.spawn,
+            tool.relay_message,
           ],
           task: tool.task,
           read: tool.read,

@@ -10,7 +10,7 @@ export const InfoSchema = Schema.Struct({
   styleId: Schema.optional(Schema.String),
 })
 
-export type BuiltinKind = "ban" | "unban" | "enter-evolve" | "exit-evolve"
+export type BuiltinKind = "ban" | "unban" | "enter-evolve" | "exit-evolve" | "enter-forever" | "exit-forever"
 
 export type Info = {
   prefixes: string[]
@@ -38,6 +38,8 @@ const builtins: Info[] = [
   { prefixes: ["允许:", "允许：", "unban:", "解禁:"], builtin: "unban", description: "解除屏蔽短语", styleId: "extmark.directive" },
   { prefixes: ["进化:", "evolve:"], builtin: "enter-evolve", description: "进入进化模式", styleId: "extmark.directive" },
   { prefixes: ["停止进化:", "停止进化：", "exit-evolve:", "stop-evolve:"], builtin: "exit-evolve", description: "退出进化模式", styleId: "extmark.directive" },
+  { prefixes: ["永续:", "永续：", "forever:"], builtin: "enter-forever", description: "进入永续模式", styleId: "extmark.directive" },
+  { prefixes: ["停止永续:", "停止永续：", "exit-forever:", "stop-forever:"], builtin: "exit-forever", description: "退出永续模式", styleId: "extmark.directive" },
 ]
 
 export const layer = Layer.effect(

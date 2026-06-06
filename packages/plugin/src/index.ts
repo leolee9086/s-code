@@ -329,7 +329,55 @@ export interface Hooks {
     output: { text: string },
   ) => Promise<void>
   /**
-   * Modify tool definitions (description and parameters) sent to LLM
+   * Modify tool definitions (description and parameters) sent to LLM.
+   * Enhanced: `add` allows plugins to inject entirely new tools.
    */
-  "tool.definition"?: (input: { toolID: string }, output: { description: string; parameters: any }) => Promise<void>
+  "tool.definition"?: (
+    input: { toolID: string },
+    output: {
+      description: string
+      parameters: any
+      /** 新增：允许插件注册全新工具 */
+      add?: Record<string, { description: string; parameters: any }>
+    },
+  ) => Promise<void>
+  /**
+   * Decide whether the session loop should continue.
+   * - shouldContinue: true → continue next round
+   * - shouldContinue: false → break (idle or sleep)
+   * - sleepMs: number → wait before continuing (for timer-based polling)
+   */
+  "loop.continue"?: (
+    input: {
+      sessionID: string
+      round: number
+      lastFinish: string | undefined
+      hasToolCalls: boolean
+      isForeverMode: boolean
+      conditionState?: Record<string, unknown>
+    },
+    output: {
+      shouldContinue: boolean
+      reason?: string
+      sleepMs?: number
+      conditionState?: Record<string, unknown>
+    },
+  ) => Promise<void>
+  /**
+   * Inject a synthetic user message before the next loop round.
+   * Replaces the hardcoded evolve-mode system-reminder injection.
+   * Empty parts array → no injection (loop continues without new message).
+   */
+  "loop.inject"?: (
+    input: {
+      sessionID: string
+      round: number
+      lastFinish: string | undefined
+      isForeverMode: boolean
+      conditionState?: Record<string, unknown>
+    },
+    output: {
+      parts: Array<{ type: "text"; text: string; synthetic?: boolean }>
+    },
+  ) => Promise<void>
 }

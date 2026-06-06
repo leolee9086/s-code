@@ -101,33 +101,17 @@ export default tool({
       ? `bun run --conditions=browser ./src/index.ts --session ${sessionId}`
       : "bun run dev"
 
-    // Restore console mode before exit: disable mouse/window input, enable cooked mode
-    const k32 = dlopen("kernel32.dll", {
-      GetStdHandle: { args: ["i32"], returns: "ptr" },
-      GetConsoleMode: { args: ["ptr", "ptr"], returns: "i32" },
-      SetConsoleMode: { args: ["ptr", "u32"], returns: "i32" },
-    })
-    const handle = k32.symbols.GetStdHandle(-10)
-    const modeBuf = new Uint32Array(1)
-    k32.symbols.GetConsoleMode(handle, ptr(modeBuf))
-    k32.symbols.SetConsoleMode(handle, (modeBuf[0]! & ~0x0018) | 0x0007)
-
     cp.spawn("cmd", ["/c", "start", "", "pwsh", "-NoExit", "-Command", devCmd], {
       cwd: pkgDir,
       detached: true,
       stdio: "ignore",
     })
 
-    const result = [
+    return [
       debug,
       `构建成功 v${version}`,
       sessionId ? `续接 session: ${sessionId}` : "已打开新的 dev 窗口",
       buildResult.text(),
     ].join("\n")
-
-    // Spawn a killer process: wait 1s then kill this process
-    cp.exec(`powershell -Command "Start-Sleep 1; Stop-Process -Id ${process.pid} -Force"`, () => {})
-
-    return result
   },
 })

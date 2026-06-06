@@ -3,7 +3,6 @@ import * as path from "path"
 import { Effect } from "effect"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
-import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./write.txt"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { File } from "../file"
@@ -11,7 +10,6 @@ import { FileWatcher } from "../file/watcher"
 import { Format } from "../format"
 import { AppFileSystem } from "@opencode-ai/core/filesystem"
 import { InstanceState } from "@/effect/instance-state"
-import { trimDiff } from "./edit"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
 
@@ -44,20 +42,22 @@ export const WriteTool = Tool.define(
           yield* assertExternalDirectoryEffect(ctx, filepath)
 
           const exists = yield* fs.existsSafe(filepath)
-          const source = exists ? yield* Bom.readFile(fs, filepath) : { bom: false, text: "" }
-          const next = Bom.split(params.content)
-          const desiredBom = source.bom || next.bom
-          const contentOld = source.text
-          const contentNew = next.text
+          if (exists) {
+            throw new Error(
+              `File "${filepath}" already exists.\n\n` +
+              `Use the 'edit' tool to modify existing files, or remove the file first if you intend to recreate it.`
+            )
+          }
 
-          const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, contentNew))
+          const desiredBom = Bom.split(params.content).bom
+          const contentNew = Bom.split(params.content).text
+
           yield* ctx.ask({
             permission: "edit",
             patterns: [path.relative(instance.worktree, filepath)],
             always: ["*"],
             metadata: {
               filepath,
-              diff,
             },
           })
 
@@ -68,7 +68,7 @@ export const WriteTool = Tool.define(
           yield* events.publish(File.Event.Edited, { file: filepath })
           yield* events.publish(FileWatcher.Event.Updated, {
             file: filepath,
-            event: exists ? "change" : "add",
+            event: "add",
           })
 
           let output = "Wrote file successfully."
@@ -94,7 +94,7 @@ export const WriteTool = Tool.define(
             metadata: {
               diagnostics,
               filepath,
-              exists: exists,
+              exists: false,
             },
             output,
           }

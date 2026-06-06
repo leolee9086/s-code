@@ -46,6 +46,7 @@ import { ConfigVariable } from "./variable"
 import { Npm } from "@opencode-ai/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { ConfigExperimental } from "@opencode-ai/core/config/experimental"
+import { ConfigForever } from "./forever"
 
 const log = Log.create({ service: "config" })
 
@@ -319,6 +320,10 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  forever: Schema.optional(ConfigForever.ForeverInfo).annotate({
+    description:
+      "Forever mode configuration. Allows the agent loop to run continuously with configurable conditions, dynamic prompt injection, and external control.",
+  }),
 }).annotate({ identifier: "Config" })
 
 // Uses the shared `DeepMutable` from `@opencode-ai/core/schema`. See the definition

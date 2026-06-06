@@ -4,8 +4,8 @@ import { Database } from "@opencode-ai/core/database/database"
 import { eq } from "drizzle-orm"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { FetchHttpClient } from "effect/unstable/http"
-import { expect } from "bun:test"
-import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer } from "effect"
+import { describe, expect } from "bun:test"
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Option, Scope } from "effect"
 import path from "path"
 import { fileURLToPath, pathToFileURL } from "url"
 import { NamedError } from "@opencode-ai/core/util/error"
@@ -14,6 +14,8 @@ import { BackgroundJob } from "@/background/job"
 import { Command } from "../../src/command"
 import { PrefixCommand } from "../../src/prefix-command"
 import { Config } from "@/config/config"
+import { setForeverMode, clearForeverMode } from "../../src/forever/forever"
+import { ForeverState } from "../../src/forever/state"
 import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
 import { Permission } from "../../src/permission"
@@ -242,6 +244,14 @@ function makeHttp(input?: { processor?: "blocking" }) {
   return Layer.mergeAll(TestLLMServer.layer, makePrompt(input))
 }
 
+function makeHttpWithForever(input?: { processor?: "blocking" }) {
+  // 用 provideMerge 确保 ForeverState 在 prompt layer 构建时就可用
+  return Layer.mergeAll(
+    TestLLMServer.layer,
+    Layer.provideMerge(makePrompt(input), ForeverState.statePersistenceLayer),
+  )
+}
+
 function makeHttpNoLLMServer(input?: { processor?: "blocking" }) {
   return makePrompt(input)
 }
@@ -251,6 +261,9 @@ const noLLMServer = testEffect(makeHttpNoLLMServer())
 const raceNoLLMServer = testEffect(makeHttpNoLLMServer({ processor: "blocking" }))
 const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
+
+// Forever mode tests need StatePersistenceService
+const foreverIt = testEffect(makeHttpWithForever())
 
 // Config that registers a custom "test" provider with a "test-model" model
 // so provider model lookup succeeds inside the loop.
@@ -2354,3 +2367,69 @@ noLLMServer.instance(
     }),
   30_000,
 )
+
+// ---------------------------------------------------------------------------
+// 永续模式（Forever Mode）端到端测试
+// ---------------------------------------------------------------------------
+
+// 永续模式 e2e 使用 budget.max_rounds 控制循环次数
+const foreverProviderCfg = (url: string, maxRounds: number) => ({
+  provider: {
+    test: {
+      ...cfg.provider.test,
+      options: { ...cfg.provider.test.options, baseURL: url },
+    },
+  },
+  forever: {
+    enabled: true,
+    prompt: { default: "Continue the test task." },
+    budget: { max_rounds: maxRounds },
+  },
+})
+
+describe("Forever Mode E2E", () => {
+  // 简化的永续模式 e2e：使用 2 轮 budget 快速验证
+  // ForeverState + ForeverCondition 通过 makeHttp() 注入全局测试层
+  foreverIt.instance(
+    "runs 2 rounds then stops via budget limit",
+    () =>
+      Effect.gen(function* () {
+        setForeverMode()
+        try {
+          const { directory: dir } = yield* TestInstance
+          const llm = yield* TestLLMServer
+
+          yield* writeConfig(dir, foreverProviderCfg(llm.url, 2))
+          yield* llm.text("a")
+          yield* llm.text("b")
+
+          const prompt = yield* SessionPrompt.Service
+          const sessions = yield* Session.Service
+          const chat = yield* sessions.create({
+            title: "Forever E2E",
+            permission: [{ permission: "*", pattern: "*", action: "allow" }],
+          })
+          yield* prompt.prompt({
+            sessionID: chat.id,
+            agent: "build",
+            noReply: true,
+            parts: [{ type: "text", text: "start" }],
+          })
+
+          const result = yield* prompt.loop({ sessionID: chat.id }).pipe(
+            Effect.timeoutOrElse({
+              duration: Duration.seconds(15),
+              orElse: () => Effect.fail(new Error("Forever loop timed out")),
+            }),
+          )
+          expect(result.info.role).toBe("assistant")
+
+          const calls = yield* llm.calls
+          expect(calls).toBe(2)
+        } finally {
+          clearForeverMode()
+        }
+      }),
+    20_000,
+  )
+})
