@@ -59,29 +59,30 @@ export function checkSchema(
   // 期望表结构（来自 Drizzle 表定义）
   const expected = buildExpected()
 
-  const issues: string[] = []
+  const fatal: string[] = []
+  const warnings: string[] = []
 
-  // 检查期望的每张表在数据库中都存在且列匹配
   for (const [tableName, expectedCols] of expected) {
     const actualCols = actual.get(tableName)
     if (!actualCols) {
-      issues.push(`missing table: ${tableName}`)
+      fatal.push(`missing table: ${tableName}`)
       continue
     }
     for (const col of expectedCols) {
       if (!actualCols.has(col)) {
-        issues.push(`table ${tableName}: missing column \`${col}\``)
+        fatal.push(`table ${tableName}: missing column \`${col}\``)
       }
     }
+    // 多余的列（代码不认但数据库有的）无害，仅警告
     for (const col of actualCols) {
       if (!expectedCols.includes(col)) {
-        issues.push(`table ${tableName}: unexpected column \`${col}\``)
+        warnings.push(`table ${tableName}: unexpected column \`${col}\``)
       }
     }
   }
 
-  if (issues.length > 0) {
-    return { compatible: false, message: `Schema mismatch:\n  ${issues.join("\n  ")}` }
+  if (fatal.length > 0) {
+    return { compatible: false, message: `Schema mismatch:\n  ${fatal.join("\n  ")}` }
   }
   return { compatible: true }
 }

@@ -97,6 +97,10 @@ const cli = yargs(args)
       process.env.OPENCODE_PURE = "1"
     }
 
+    // channel 必须在任何可能失败的 async 操作前设置，
+    // 否则中间件 reject 后 handler 会看到错误的值（编译期 InstallationChannel）
+    if (opts.channel) process.env.OPENCODE_CHANNEL = opts.channel
+
     await Log.init({
       print: process.argv.includes("--print-logs"),
       dev: Installation.isLocal(),
@@ -112,7 +116,6 @@ const cli = yargs(args)
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
     process.env.OPENCODE_PID = String(process.pid)
-    if (opts.channel) process.env.OPENCODE_CHANNEL = opts.channel
 
     Log.Default.info("opencode", {
       version: InstallationVersion,

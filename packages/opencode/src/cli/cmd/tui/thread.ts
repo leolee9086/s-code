@@ -256,9 +256,14 @@ export const TuiThreadCommand = cmd({
         network.port !== 0 ||
         network.hostname !== "127.0.0.1"
 
+      // Worker 的 server() RPC 现在始终在 127.0.0.1 上启动内部服务器供 relay 使用。
+      // 获取其 URL 供 spawn 子进程注册 relay。
+      const serverResult = await client.call("server", network)
+      process.env.OPENCODE_HTTP_URL = serverResult.url
+
       const transport = external
         ? {
-            url: (await client.call("server", network)).url,
+            url: serverResult.url,
             fetch: undefined,
             events: undefined,
           }

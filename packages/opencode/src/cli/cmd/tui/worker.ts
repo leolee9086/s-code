@@ -84,9 +84,28 @@ export const rpc = {
     return result
   },
   async server(input: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
+    // 永远在回环地址上启动一个 HTTP 服务器供内部 relay 使用
     if (server) await server.stop(true)
-    server = await Server.listen(input)
-    return { url: server.url.toString() }
+    const internal = await Server.listen({ port: 0, hostname: "127.0.0.1" })
+    server = internal
+
+    // 如果用户指定了外部地址，额外监听一个外部服务器（共享同一个 fetch handler）
+    const isExternal = input.port !== 0 || input.hostname !== "127.0.0.1"
+    if (isExternal) {
+      const external = Bun.serve({
+        port: input.port,
+        hostname: input.hostname,
+        fetch: Server.Default().app.fetch,
+      })
+      // 停止时一起关掉
+      const origStop = internal.stop
+      ;(server as any).stop = async (close?: boolean) => {
+        external.stop(close)
+        return origStop(close)
+      }
+    }
+
+    return { url: internal.url.toString() }
   },
   async checkUpgrade(input: { directory: string }) {
     await InstanceRuntime.load({ directory: input.directory })

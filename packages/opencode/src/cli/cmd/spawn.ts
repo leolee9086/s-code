@@ -1,58 +1,82 @@
 // --spawn 命令行入口点
 //
 // 子进程启动入口：opencode --spawn <init-json>
-// 启动一个永续模式子进程，与父进程通过 HTTP relay 通信。
 //
-// init-json 格式：
+// 子进程是一个完整的 opencode worker 实例：
+//   - 加载自己的 InstanceContext
+//   - 启动自己的 HTTP server（接收父进程 relay 消息）
+//   - 在新窗口启动 TUI 子进程（`opencode tui --session <id>`）
+//   - 注册轮次完成回调，每轮 LLM 响应后向父进程汇报
+//   - 运行 SessionPrompt.loop() 永续循环处理消息
+//   - 注册到父进程的 relay 路由表
+//   - 定时发送心跳
+//
+// 注意：TUI 不在当前进程内运行，而是通过 child_process.spawn
+// 在新的控制台窗口启动独立进程显示。这样父进程窗口和子进程 TUI
+// 分别在不同窗口运行，用户可以同时观察两者。
+//
+// init-json 格式（由 SpawnTool 构造）：
 // {
-//   "sessionID": "已有的 session ID（可选，留空则新建）",
-//   "parentURL": "父进程 HTTP relay 地址（可选）",
-//   "prompt": "初始提示词（可选）"
+//   "sessionID": "父进程 fork 的 session ID",
+//   "agent": "使用的 agent 类型",
+//   "prompt": "初始提示词",
+//   "parent": { "sessionID": "父 session ID", "httpURL": "父进程 HTTP 地址" }
 // }
 
-import { Effect } from "effect"
+import { Effect, Context, Option } from "effect"
 import { effectCmd, fail } from "../effect-cmd"
+import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { setForeverMode, clearForeverMode } from "@/forever/forever"
+import { SessionPrompt } from "@/session/prompt"
+import { Injection } from "@/session/injection"
+import type { Injection as InjectionInterface } from "@/session/injection"
+import { Server } from "@/server/server"
+import type { SessionID } from "@/session/schema"
+
+const HEARTBEAT_INTERVAL_MS = 30000
 
 export const SpawnCommand = effectCmd({
-  command: "--spawn [init-json]",
+  command: "spawn [init-json]",
   describe: false,
   instance: true,
   builder: (yargs) =>
-    yargs.positional("init-json", {
+    withNetworkOptions(yargs).positional("init-json", {
       type: "string",
       describe: "JSON config for initialization",
     }),
-  handler: Effect.fn("Cli.spawn")(function* (args: { "init-json"?: string }) {
-    // 1. 解析 init JSON
+  handler: Effect.fn("Cli.spawn")(function* (args: { "init-json"?: string } & Record<string, unknown>) {
     const initRaw = args["init-json"]
-    if (!initRaw) {
-      return yield* fail("init-json argument is required for spawn mode")
-    }
+    if (!initRaw) return yield* fail("init-json argument is required for spawn mode")
 
-    let init: { sessionID?: string; parentURL?: string; prompt?: string }
+    let init: {
+      sessionID: string
+      agent?: string
+      prompt?: string
+      parent?: { sessionID: string; httpURL: string }
+    }
     try {
       init = JSON.parse(initRaw)
     } catch {
       return yield* fail("init-json must be valid JSON")
     }
 
-    // 2. 启动永续模式
-    setForeverMode()
+    const sessionID = init.sessionID as SessionID
+    if (!sessionID) return yield* fail("sessionID is required")
 
-    // 3. 注册到父进程中继（如果提供了 parentURL）
-    if (init.parentURL) {
-      const registerUrl = `${init.parentURL}/api/relay/register`
+    // 1. 启动 HTTP server
+    const opts = yield* resolveNetworkOptions(args as any)
+    const server = yield* Effect.promise(() => Server.listen(opts))
+    const httpURL = `http://localhost:${server.port}`
+    process.env["OPENCODE_HTTP_URL"] = httpURL
+
+    // 2. 注册到父进程 relay
+    if (init.parent?.httpURL) {
       yield* Effect.tryPromise({
         try: () =>
-          fetch(registerUrl, {
+          fetch(`${init.parent!.httpURL}/api/relay/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionID: init.sessionID,
-              httpURL: `http://localhost:${process.env["PORT"] || "4096"}`,
-              pid: process.pid,
-            }),
+            body: JSON.stringify({ sessionID: init.sessionID, httpURL, pid: process.pid }),
           }),
         catch: (error) => {
           console.error("failed to register with parent relay:", error)
@@ -60,58 +84,116 @@ export const SpawnCommand = effectCmd({
       }).pipe(Effect.ignore)
     }
 
-    // 4. 通过 SDK 创建 session 并进入永续循环
-    const { createOpencodeClient } = yield* Effect.promise(() => import("@opencode-ai/sdk/v2"))
-
-    const client = createOpencodeClient({
-      baseUrl: `http://localhost:${process.env["PORT"] || "4096"}`,
-    })
-
-    // 如果有 sessionID，恢复 session；否则创建新 session
-    let sessionID: string | undefined = init.sessionID
-    if (!sessionID) {
-      const created = yield* Effect.promise(() => client.session.create({}))
-      sessionID = (created as any).id ?? (created as any).data?.id
-    }
-    if (!sessionID) return yield* fail("failed to create or resolve session")
-
-    // 如果有初始提示词，先发送
-    const initPrompt = init.prompt
-    if (initPrompt) {
-      yield* Effect.promise(() =>
-        client.session.prompt({
-          sessionID,
-          agent: "build",
-          parts: [{ type: "text", text: initPrompt }],
-        }),
-      )
-    }
-
-    // 5. 通过 HTTP API 调用 forever 循环（复用已有的 session.forever 端点）
-    // 这会阻塞直到永续模式退出（预算耗尽 / 手动停止）
-    const foreverUrl = `http://localhost:${process.env["PORT"] || "4096"}/api/sessions/${sessionID}/forever`
-    yield* Effect.tryPromise({
-      try: () =>
-        fetch(foreverUrl, { method: "POST" }).then(async (r) => {
-          if (!r.ok) {
-            const text = await r.text().catch(() => "")
-            throw new Error(`forever loop failed: ${r.status} ${text}`)
+    // 3. 在新窗口启动 TUI 子进程（opencode --session <id> --port <port>）
+    // TUI 必须是独立进程，在新控制台窗口显示。
+    // 父进程与子进程的 TUI 分别在两个窗口运行。
+    // 注意：built 二进制下 process.argv[1] 是 CLI 参数而非入口脚本，
+    // 所以用 process.execPath 作为可执行文件路径，只传 flags 而不传入口脚本。
+    yield* Effect.promise(() =>
+      new Promise<void>((resolve) => {
+        try {
+          const cp = require("child_process") as typeof import("child_process")
+          const binPath = process.execPath?.replace(/\\/g, "/") ?? process.argv[0]
+          const isBun = binPath.endsWith("bun") || binPath.endsWith("bun.exe")
+          // built 二进制不需要传入口脚本（process.argv[1]）；bun dev 需要
+          const tuiArgs = isBun
+            ? [process.argv[1], "--session", init.sessionID, "--port", String(server.port)]
+            : ["--session", init.sessionID, "--port", String(server.port)]
+          // 确保子进程继承 OPENCODE_CHANNEL（--channel 参数设到 env 里的值）
+          const tuiEnv = {
+            ...process.env as Record<string, string>,
+            OPENCODE_HTTP_URL: httpURL,
           }
-        }),
-      catch: (error) => {
-        console.error("forever loop exited with error:", error)
-      },
-    }).pipe(Effect.ignore)
+          if (process.platform === "win32") {
+            cp.spawn("cmd.exe", ["/c", "start", "Spawn Session", "cmd", "/c", binPath, ...tuiArgs], {
+              detached: true,
+              stdio: "ignore",
+              env: tuiEnv,
+            })
+          } else {
+            cp.spawn(binPath, tuiArgs, {
+              detached: true,
+              stdio: "ignore",
+              env: tuiEnv,
+            })
+          }
+        } catch (e) {
+          console.error("failed to spawn TUI:", e)
+        }
+        resolve()
+      }),
+    ).pipe(Effect.ignore)
 
-    // 6. 永续模式结束，清理
+    // 4. 设置永续模式 + 启动心跳
+    setForeverMode()
+    const heartbeatTimer = setInterval(() => {
+      if (init.parent?.httpURL) {
+        fetch(`${init.parent!.httpURL}/api/relay/heartbeat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionID: init.sessionID }),
+        }).catch(() => {})
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+
+    // 5. 注册轮次完成回调：每次子进程 LLM 响应后，将结果转发到父进程
+    if (init.parent?.httpURL) {
+      // Injection.Service 不在 AppServices 类型中，通过 Context 访问（运行时可用）
+      const ctx = (yield* Effect.context()) as Context.Context<any>
+      const injectionOpt = Context.getOption(ctx, Injection.Service as any) as Option.Option<InjectionInterface.Interface>
+      if (Option.isSome(injectionOpt)) {
+        const injection = injectionOpt.value
+        yield* injection.onRoundComplete(sessionID, (roundCtx) =>
+          Effect.gen(function* () {
+            const content = roundCtx.lastAssistantMessage
+            if (content) {
+              yield* Effect.tryPromise({
+                try: () =>
+                  fetch(`${init.parent!.httpURL}/api/relay/inject`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      targetSessionID: init.parent!.sessionID,
+                      messages: [{
+                        type: "text" as const,
+                        text: [
+                          `[子进程 ${sessionID} 汇报]`,
+                          content,
+                        ].join("\n"),
+                        synthetic: true,
+                      }],
+                    }),
+                  }),
+                catch: () => {},
+              }).pipe(Effect.ignore)
+            }
+            return { action: "continue" as const }
+          }),
+        )
+      }
+    }
+
+    // 6. 发送初始 prompt
+    const promptSvc = yield* SessionPrompt.Service
+    if (init.prompt) {
+      yield* promptSvc.prompt({
+        sessionID,
+        agent: init.agent ?? "build",
+        parts: [{ type: "text", text: init.prompt }],
+      }).pipe(Effect.ignore)
+    }
+
+    // 7. 启动永续循环
+    yield* promptSvc.loop({ sessionID })
+
+    // 8. 清理
     clearForeverMode()
+    clearInterval(heartbeatTimer)
 
-    // 通知父进程
-    if (init.parentURL) {
-      const unregisterUrl = `${init.parentURL}/api/relay/unregister`
+    if (init.parent?.httpURL) {
       yield* Effect.tryPromise({
         try: () =>
-          fetch(unregisterUrl, {
+          fetch(`${init.parent!.httpURL}/api/relay/unregister`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionID }),
@@ -119,5 +201,7 @@ export const SpawnCommand = effectCmd({
         catch: () => {},
       }).pipe(Effect.ignore)
     }
+
+    yield* Effect.promise(() => server.stop(true)).pipe(Effect.ignore)
   }),
 })

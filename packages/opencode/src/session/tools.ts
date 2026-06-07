@@ -9,6 +9,7 @@ import { Tool } from "@/tool/tool"
 import { ToolJsonSchema } from "@/tool/json-schema"
 import { ToolRegistry } from "@/tool/registry"
 import { Truncate } from "@/tool/truncate"
+import { isEvolveMode } from "@/evolve/file-protocol"
 
 import { Plugin } from "@/plugin"
 import type { TaskPromptOps } from "@/tool/task"
@@ -90,6 +91,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         return run.promise(
           Effect.gen(function* () {
             const ctx = context(args, options)
+            // 非进化模式下禁止执行 evolve 工具
+            if (item.id === "evolve" && !isEvolveMode()) {
+              return {
+                title: "Evolve tool blocked",
+                output: "进化模式未激活，不能调用 evolve 工具。请先使用「进化:」指令进入进化模式。",
+                metadata: {},
+              }
+            }
             yield* plugin.trigger(
               "tool.execute.before",
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },

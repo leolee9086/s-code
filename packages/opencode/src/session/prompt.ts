@@ -1094,13 +1094,18 @@ export const layer = Layer.effect(
       }
       for (const { match } of matchedPrefixes) {
         const { info, args } = match
+        const phrases = args.trim().split(/\s+/).filter(Boolean)
         if (info.builtin === "ban") {
-          yield* PhraseBan.ban(input.sessionID, args)
-          log.info("phrase banned", { sessionID: input.sessionID, phrase: args })
+          for (const phrase of phrases) {
+            yield* PhraseBan.ban(input.sessionID, phrase)
+            log.info("phrase banned", { sessionID: input.sessionID, phrase })
+          }
         }
         if (info.builtin === "unban") {
-          yield* PhraseBan.unban(input.sessionID, args)
-          log.info("phrase unbanned", { sessionID: input.sessionID, phrase: args })
+          for (const phrase of phrases) {
+            yield* PhraseBan.unban(input.sessionID, phrase)
+            log.info("phrase unbanned", { sessionID: input.sessionID, phrase })
+          }
         }
         if (info.builtin === "enter-evolve") {
           process.env["S_CODE_EVOLVE"] = "1"
@@ -1125,10 +1130,11 @@ export const layer = Layer.effect(
         const mp = matchedPrefixes.find((d) => d.index === i)
         if (!mp || part.type !== "text") return part
         const { info, args } = mp.match
+        const trimmed = args.trim()
         let feedback: string
         switch (info.builtin) {
-          case "ban": feedback = `[指令已执行: 禁止 "${args}"]`; break
-          case "unban": feedback = `[指令已执行: 允许 "${args}"]`; break
+          case "ban": feedback = `[指令已执行: 禁止 "${trimmed}"]`; break
+          case "unban": feedback = `[指令已执行: 允许 "${trimmed}"]`; break
           case "enter-evolve": feedback = `[指令已执行: 进入进化模式]${args.trim() ? " " + args.trim() : ""}`; break
           case "exit-evolve": feedback = `[指令已执行: 退出进化模式]`; break
           case "enter-forever": feedback = `[指令已执行: 进入永续模式]${args.trim() ? " " + args.trim() : ""}`; break
@@ -1762,13 +1768,26 @@ export const layer = Layer.effect(
             // 轮次完成回调：允许外部程序化控制
             const roundHandler = yield* injection.getRoundHandler(sessionID)
             if (roundHandler) {
+              // 从当前 assistant message 的 parts 中提取文本
+              // 使用 findMessage 避免新增服务依赖（sessions 已从闭包中 resolve）
+              const assistantMsg = yield* sessions.findMessage(sessionID, (m) => m.info.id === handle.message.id).pipe(
+                Effect.map((o) => {
+                  if (o._tag === "None") return undefined
+                  return o.value.parts
+                    .filter((p): p is SessionLegacy.TextPart => p.type === "text")
+                    .map((p) => p.text)
+                    .join("\n")
+                    .trim() || undefined
+                }),
+                Effect.ignore,
+              )
               const toolCalls = [] as Array<{ tool: string; callID: string }>
               const decision = yield* roundHandler({
                 sessionID,
                 round: step,
                 finish: handle.message.finish,
                 toolCalls,
-                lastAssistantMessage: undefined,
+                lastAssistantMessage: assistantMsg ?? undefined,
               })
               if (decision.action === "stop") {
                 return "break" as const

@@ -55,6 +55,7 @@ import { Reference } from "@/reference/reference"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
+import { isEvolveMode } from "@/evolve/file-protocol"
 
 const log = Log.create({ service: "tool.registry" })
 
@@ -337,6 +338,9 @@ export const layer: Layer.Layer<
           input.modelID.includes("gpt-") && !input.modelID.includes("oss") && !input.modelID.includes("gpt-4")
         if (tool.id === ApplyPatchTool.id) return usePatch
         if (tool.id === EditTool.id || tool.id === WriteTool.id) return !usePatch
+
+        // 非进化模式下隐藏 evolve 工具
+        if (tool.id === "evolve") return isEvolveMode()
 
         return true
       })

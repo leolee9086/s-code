@@ -260,6 +260,13 @@ setTimeout(() => process.exit(0), maxLifetime * 60 * 1000)
 | 循环 | 单次执行或 `background` 后台运行 | 全生命周期永续循环 |
 | 通讯 | 结果返回值 | **HTTP 消息中继**，持续双向 |
 | 权限 | 子 session 权限继承 | 子进程独立权限控制 |
+| UI/TUI | 无 TUI（仅 SDK 调用） | **有完整 TUI**（子进程是完整 opencode 实例） |
+| HTTP server | 复用父进程 | **子进程启动自己的 HTTP server**，接收 relay 消息 |
+
+> **重要修正**：子进程是一个**完整的 opencode 实例**，**不是** task 工具那种 SDK 代理。
+> 子进程启动时拥有自己的 loop、HTTP server、TUI 进程（与父进程 TUI 并行），
+> 通过 relay 协议与父进程通信。`describe: false` 仅表示子进程的 yargs help 不暴露
+> 该子命令，并不意味着子进程没有 TUI。
 
 **`spawn` 只做跨进程。同进程的归 `task`。**
 

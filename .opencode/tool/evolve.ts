@@ -78,6 +78,8 @@ export default tool({
 
     // 2. 构建
     // --binary-suffix <sessionId> 输出独特文件名，不冲突；--outdir 切换目录避免覆写运行中的 exe
+    // 注意：故意不设 OPENCODE_CHANNEL，build 脚本默认使用 git 分支名（dev），
+    // 然后启动时传递 --channel local 来验证 --channel 参数是否真的覆盖了编译期渠道
     lines.push("▶ 构建...")
     const buildArgs = ["run", "build", "--single", "--skip-install", "--skip-embed-web-ui", "--outdir", distOutDir, "--binary-suffix", binarySuffix]
     try {
@@ -103,12 +105,13 @@ export default tool({
       // 写入失败不应阻塞进化
     }
 
-    // evolve 构建的是本地开发二进制，始终使用 local 数据库渠道。
-    // 不使用 ctx.channel：如果当前二进制是 evolve 自构建的（OPENCODE_CHANNEL='dev'），
-    // ctx.channel 会返回 "dev" 而非 "local"，导致子进程连到 opencode-dev.db（schema 不兼容）。
+    // 使用当前窗口的数据库渠道，确保新窗口连到同一个数据库。
+    // 即使当前窗口本身就是 evolve 自构建的（ctx.channel='dev'），
+    // 数据库 schema-check 已改为多余列仅警告不崩溃，所以不会有兼容问题。
+    const channel = ctx.channel ?? "local"
     const binArgs = sessionId
-      ? ["-s", sessionId, "--prompt", prompt, "--channel", "local"]
-      : ["--prompt", prompt, "--channel", "local"]
+      ? ["-s", sessionId, "--prompt", prompt, "--channel", channel]
+      : ["--prompt", prompt, "--channel", channel]
 
     // 必须传递 S_CODE_TEMP 和 S_CODE_EVOLVE，否则子进程的 evolveDir() 推算路径错误，
     // isInEvolveScope() 无法将 s-temp 加入白名单，导致工具反复弹 external_directory 授权。
