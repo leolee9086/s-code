@@ -275,7 +275,12 @@ export const TuiThreadCommand = cmd({
 
       // 等待 Worker 就绪后验证 session。Worker 的 Rpc.listen(rpc) 在
       // await Log.init() 之后才调用，在此之前 Worker 不处理 RPC 消息。
-      let sessionNotFound: string | undefined
+      //
+      // 验证失败时仅记录警告，不阻断启动流程。
+      // 进化模式下，Worker 的 session loop 在单独的 Effect 运行时中运行，
+      // 使用自己的工作目录解析 InstanceContext，不受 TUI 验证的影响。
+      // 将 sessionID 设为 undefined 会导致 TUI 导航到空白 session，
+      // 使用户界面与 Worker 正在处理的 session 脱节。
       if (args.session) {
         try {
           await withTimeout(client.call("ready", undefined), 30000)
@@ -286,7 +291,12 @@ export const TuiThreadCommand = cmd({
             fetch: transport.fetch,
           })
         } catch (error) {
-          sessionNotFound = errorMessage(error)
+          Log.Default.warn("validateSession failed — 继续使用原始 sessionID", {
+            sessionID: args.session,
+            error: errorMessage(error),
+            cause: error instanceof Error ? error.cause : undefined,
+            channel: process.env.OPENCODE_CHANNEL,
+          })
         }
       }
 
@@ -311,13 +321,14 @@ export const TuiThreadCommand = cmd({
           events: transport.events,
           args: {
             continue: args.continue,
-            sessionID: sessionNotFound ? undefined : args.session,
+            // 即使 validateSession 失败也传递原始 sessionID。
+            // Worker 的 session loop 使用独立的 InstanceContext 解析，
+            // 总能正确找到 session；TUI 需要这个 ID 来导航到正确的 session 视图。
+            sessionID: args.session,
             agent: args.agent,
             model: args.model,
             prompt,
             fork: args.fork,
-            sessionNotFound,
-            pendingPrompt: sessionNotFound ? prompt : undefined,
           },
         })
         // 统一退出入口：Worker 意外退出时走 TUI 生命周期退出，

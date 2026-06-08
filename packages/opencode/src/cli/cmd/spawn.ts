@@ -11,9 +11,9 @@
 //   - 注册到父进程的 relay 路由表
 //   - 定时发送心跳
 //
-// 注意：TUI 不在当前进程内运行，而是通过 child_process.spawn
-// 在新的控制台窗口启动独立进程显示。这样父进程窗口和子进程 TUI
-// 分别在不同窗口运行，用户可以同时观察两者。
+//
+// 注意：TUI 不在 spawn worker 内运行。spawn worker 是纯后台进程，
+// 通过 relay 与父进程通信。用户在主窗口通过 relayMessage 与之交互。
 //
 // init-json 格式（由 SpawnTool 构造）：
 // {
@@ -24,6 +24,8 @@
 // }
 
 import { Effect, Context, Option } from "effect"
+import path from "path"
+import { fileURLToPath } from "url"
 import { effectCmd, fail } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { setForeverMode, clearForeverMode } from "@/forever/forever"
@@ -36,7 +38,7 @@ import type { SessionID } from "@/session/schema"
 const HEARTBEAT_INTERVAL_MS = 30000
 
 export const SpawnCommand = effectCmd({
-  command: "spawn [init-json]",
+  command: ["spawn [init-json]", "--spawn [init-json]"],
   describe: false,
   instance: true,
   builder: (yargs) =>
@@ -85,36 +87,26 @@ export const SpawnCommand = effectCmd({
     }
 
     // 3. 在新窗口启动 TUI 子进程（opencode --session <id> --port <port>）
-    // TUI 必须是独立进程，在新控制台窗口显示。
-    // 父进程与子进程的 TUI 分别在两个窗口运行。
-    // 注意：built 二进制下 process.argv[1] 是 CLI 参数而非入口脚本，
-    // 所以用 process.execPath 作为可执行文件路径，只传 flags 而不传入口脚本。
+    // TUI 参数不含 JSON，用 cmd /c start 不会出现引号问题
     yield* Effect.promise(() =>
       new Promise<void>((resolve) => {
         try {
           const cp = require("child_process") as typeof import("child_process")
           const binPath = process.execPath?.replace(/\\/g, "/") ?? process.argv[0]
           const isBun = binPath.endsWith("bun") || binPath.endsWith("bun.exe")
-          // built 二进制不需要传入口脚本（process.argv[1]）；bun dev 需要
-          const tuiArgs = isBun
-            ? [process.argv[1], "--session", init.sessionID, "--port", String(server.port)]
+          const moduleDir = path.dirname(fileURLToPath(import.meta.url))
+          const entryScript = isBun ? path.resolve(moduleDir, "../../index.ts") : undefined
+          const tuiArgs = isBun && entryScript
+            ? [entryScript, "--session", init.sessionID, "--port", String(server.port)]
             : ["--session", init.sessionID, "--port", String(server.port)]
-          // 确保子进程继承 OPENCODE_CHANNEL（--channel 参数设到 env 里的值）
-          const tuiEnv = {
-            ...process.env as Record<string, string>,
-            OPENCODE_HTTP_URL: httpURL,
-          }
+          const tuiEnv = { ...process.env as Record<string, string>, OPENCODE_HTTP_URL: httpURL }
           if (process.platform === "win32") {
             cp.spawn("cmd.exe", ["/c", "start", "Spawn Session", "cmd", "/c", binPath, ...tuiArgs], {
-              detached: true,
-              stdio: "ignore",
-              env: tuiEnv,
+              detached: true, stdio: "ignore", env: tuiEnv,
             })
           } else {
             cp.spawn(binPath, tuiArgs, {
-              detached: true,
-              stdio: "ignore",
-              env: tuiEnv,
+              detached: true, stdio: "ignore", env: tuiEnv,
             })
           }
         } catch (e) {

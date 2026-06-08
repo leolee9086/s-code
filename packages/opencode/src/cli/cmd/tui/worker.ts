@@ -61,6 +61,17 @@ export const rpc = {
     return "ok" as const
   },
   async fetch(input: { url: string; method: string; headers: Record<string, string>; body?: string }) {
+    const requestID = input.headers["x-request-id"] ?? crypto.randomUUID().slice(0, 8)
+    const start = Date.now()
+    const sessionID = input.url.match(/\/session\/([^/?]+)/)?.[1]
+
+    Log.Default.info("worker.fetch request", {
+      requestID,
+      method: input.method,
+      url: input.url,
+      sessionID,
+    })
+
     const headers = { ...input.headers }
     const auth = ServerAuth.header()
     if (auth && !headers["authorization"] && !headers["Authorization"]) {
@@ -73,6 +84,15 @@ export const rpc = {
     })
     const response = await Server.Default().app.fetch(request)
     const body = await response.text()
+
+    Log.Default.info("worker.fetch response", {
+      requestID,
+      status: response.status,
+      duration: Date.now() - start,
+      bodyPreview: body.slice(0, 200),
+      sessionID,
+    })
+
     return {
       status: response.status,
       headers: Object.fromEntries(response.headers.entries()),

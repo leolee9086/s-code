@@ -11,6 +11,13 @@ export interface Handle {
   readonly warn: (msg?: unknown, extra?: Fields) => Effect.Effect<void>
   readonly error: (msg?: unknown, extra?: Fields) => Effect.Effect<void>
   readonly with: (extra: Fields) => Handle
+  readonly time: (
+    message: string,
+    extra?: Fields,
+  ) => {
+    stop(): void
+    [Symbol.dispose](): void
+  }
 }
 
 const clean = (input?: Fields): Fields =>
@@ -62,12 +69,50 @@ export const logger = Logger.make((opts) => {
   }
 })
 
-export const layer = Logger.layer([logger], { mergeWithExisting: false })
-
-export const create = (base: Fields = {}): Handle => ({
-  debug: (msg, extra) => call((item) => Effect.logDebug(item), base, msg, extra),
-  info: (msg, extra) => call((item) => Effect.logInfo(item), base, msg, extra),
-  warn: (msg, extra) => call((item) => Effect.logWarning(item), base, msg, extra),
-  error: (msg, extra) => call((item) => Effect.logError(item), base, msg, extra),
-  with: (extra) => create({ ...base, ...extra }),
+/** stderr sink: Error/Fatal logs always go to stderr with fiber annotations */
+export const stderrSink = Logger.make((opts) => {
+  if (opts.logLevel === "Error" || opts.logLevel === "Fatal") {
+    const ann = opts.fiber.getRef(References.CurrentLogAnnotations)
+    const svc = typeof ann.service === "string" ? ann.service : undefined
+    const tag = svc ? `[${svc}] ` : ""
+    const extra: string[] = []
+    if (ann.sessionID) extra.push(`session=${ann.sessionID}`)
+    if (ann.requestID) extra.push(`req=${ann.requestID}`)
+    const suffix = extra.length > 0 ? " {" + extra.join(", ") + "}" : ""
+    const parts = [`[${opts.logLevel}]`, tag, opts.message, suffix].filter(Boolean)
+    process.stderr.write(parts.join(" ") + "\n")
+  }
 })
+
+/** Development logger: file logging + stderr sink for errors */
+export const developmentLayer = Logger.layer([logger, stderrSink], { mergeWithExisting: false })
+
+/** Production logger: file logging only (OTLP merged externally) */
+export const productionLayer = Logger.layer([logger], { mergeWithExisting: false })
+
+/** Default layer always includes stderr sink regardless of OTEL config */
+export const layer = developmentLayer
+
+export const create = (base: Fields = {}): Handle => {
+  const result: Handle = {
+    debug: (msg, extra) => call((item) => Effect.logDebug(item), base, msg, extra),
+    info: (msg, extra) => call((item) => Effect.logInfo(item), base, msg, extra),
+    warn: (msg, extra) => call((item) => Effect.logWarning(item), base, msg, extra),
+    error: (msg, extra) => call((item) => Effect.logError(item), base, msg, extra),
+    with: (extra) => create({ ...base, ...extra }),
+    time(message: string, extra?: Fields) {
+      const now = Date.now()
+      result.info(message, { status: "started", ...extra })
+      function stop() {
+        result.info(message, { status: "completed", duration: Date.now() - now, ...extra })
+      }
+      return {
+        stop,
+        [Symbol.dispose]() {
+          stop()
+        },
+      }
+    },
+  }
+  return result
+}

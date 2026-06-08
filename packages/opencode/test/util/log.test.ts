@@ -69,9 +69,9 @@ it.live("local dev log is not truncated twice for the same run", () =>
     delete process.env.OPENCODE_LOG_INITIALIZED_RUN_ID
 
     yield* Effect.promise(() => Log.init({ print: false, dev: true }))
-    yield* Effect.promise(() => fs.writeFile(path.join(dir, "dev.log"), "main startup\n"))
+    yield* Effect.promise(() => fs.writeFile(path.join(dir, "opencode-main.log"), "main startup\n"))
     yield* Effect.promise(() => Log.init({ print: false, dev: true }))
 
-    expect(yield* Effect.promise(() => fs.readFile(path.join(dir, "dev.log"), "utf8"))).toContain("main startup")
+    expect(yield* Effect.promise(() => fs.readFile(path.join(dir, "opencode-main.log"), "utf8"))).toContain("main startup")
   }),
 )

@@ -129,3 +129,51 @@ Use `Effect.cached` when multiple concurrent callers should share a single in-fl
 Use `EffectBridge` for native or external callbacks (`@parcel/watcher`, `node-pty`, native `fs.watch`, plugin callbacks, etc.) that need to re-enter Effect services with instance/workspace context.
 
 Plain async code should pass explicit context or stay inside an Effect fiber; do not add ambient instance context shims.
+
+## EffectLogger patterns
+
+### Presets
+
+Use `EffectLogger.developmentLayer` (includes stderrSink for Error/Fatal) or `EffectLogger.productionLayer` (no stderrSink). The default `EffectLogger.layer` always includes stderrSink.
+
+### stderrSink
+
+Error/Fatal level logs are automatically written to stderr via `EffectLogger.stderrSink`, regardless of file logging configuration. The sink reads fiber annotations to include service name in output.
+
+Example output with fiber annotations:
+```
+[Error] [session] session not found in database {session=ses_xxx}
+[Fatal] [worker.fetch] request failed {session=ses_xxx, req=abc123}
+```
+
+### Handle.time()
+
+The `.time()` API on `EffectLogger.Handle` mirrors `Log.Logger.time` — it returns `{ stop(), [Symbol.dispose]() }` and works with `using`:
+
+```ts
+const log = EffectLogger.create({ service: "my.service" })
+using _ = log.time("operationName")
+// ... work ...
+// stop() called automatically on scope exit
+```
+
+### Fiber annotations
+
+Use `Effect.annotateLogs` to inject context into the fiber:
+
+```ts
+yield* Effect.annotateLogs(
+  Effect.gen(function* () {
+    // all Effect.log* calls here carry sessionID
+    yield* Effect.logWarning("not found", { ... })
+  }),
+  { sessionID },
+)
+```
+
+### Migration from Log.create()
+
+- Effect contexts: `Log.create({ service })` → `EffectLogger.create({ service })`, add `yield*` before log calls
+- Plain async contexts: keep using `Log.create()` — `EffectLogger` methods return `Effect<void>`
+- `.time()` API is compatible between both, no changes needed
+- Import: `import { Log }` → `import * as EffectLogger`

@@ -200,9 +200,26 @@ export const layer = Layer.effect(
         return {} as SessionSchema.Info
       }),
       get: Effect.fn("V2Session.get")(function* (sessionID) {
-        const row = yield* db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get().pipe(Effect.orDie)
-        if (!row) return yield* new NotFoundError({ sessionID })
-        return fromRow(row)
+        return yield* Effect.annotateLogs(
+          Effect.gen(function* () {
+            const row = yield* db
+              .select()
+              .from(SessionTable)
+              .where(eq(SessionTable.id, sessionID))
+              .get()
+              .pipe(Effect.orDie)
+            if (!row) {
+              yield* Effect.logWarning("session not found in database", {
+                sessionID,
+                dbPath: Database.path(),
+                channel: process.env.OPENCODE_CHANNEL,
+              })
+              return yield* new NotFoundError({ sessionID })
+            }
+            return fromRow(row)
+          }),
+          { sessionID },
+        )
       }),
       list: Effect.fn("V2Session.list")(function* (input = {}) {
         const direction = input.anchor?.direction ?? "next"

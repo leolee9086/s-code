@@ -1,6 +1,18 @@
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Option } from "effect"
+import fs from "fs"
+import os from "os"
+import path from "path"
+import { execSync } from "child_process"
+import { Global } from "@opencode-ai/core/global"
+import { Log } from "@opencode-ai/core/util/log"
+import { Database } from "@opencode-ai/core/database/database"
+import { InstallationVersion, InstallationChannel, getDatabaseChannel } from "@opencode-ai/core/installation/version"
 
 import { InstanceState } from "@/effect/instance-state"
+import { isEvolveMode, readEvolveMessage } from "@/evolve/file-protocol"
+import { Installation } from "@/installation"
+import { Session } from "./session"
+import type { SessionID } from "./schema"
 
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
 import PROMPT_DEFAULT from "./prompt/default.txt"
@@ -33,7 +45,7 @@ export function provider(model: Provider.Model) {
 }
 
 export interface Interface {
-  readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
+  readonly environment: (model: Provider.Model, sessionID?: SessionID) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
 }
 
@@ -45,21 +57,196 @@ export const layer = Layer.effect(
     const skill = yield* Skill.Service
 
     return Service.of({
-      environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
+      environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model, sessionID?: SessionID) {
         const ctx = yield* InstanceState.context
-        return [
-          [
-            `你的底层模型是 ${model.api.id}，精确模型 ID 是 ${model.providerID}/${model.api.id}`,
-            `以下是你运行环境的一些有用信息：`,
-            `<env>`,
-            `  工作目录：${ctx.directory}`,
-            `  工作区根目录：${ctx.worktree}`,
-            `  是否为 git 仓库：${ctx.project.vcs === "git" ? "是" : "否"}`,
-            `  平台：${process.platform}`,
-            `  当前日期：${new Date().toDateString()}`,
-            `</env>`,
-          ].join("\n"),
+        const startMode = Installation.isLocal() ? "源码(bun run dev)" : "二进制"
+
+        // Session 信息（通过 Effect.context() 避免引入 Service 依赖）
+        const sessionInfo = sessionID
+          ? yield* Effect.gen(function* () {
+              const ctx = yield* Effect.context()
+              const sessionsOption = Context.getOption(ctx, Session.Service)
+              if (Option.isNone(sessionsOption)) return undefined
+              const sessions = sessionsOption.value
+              const session = yield* sessions.get(sessionID).pipe(Effect.option)
+              if (Option.isNone(session)) return undefined
+              const s = session.value
+              const childrenCount = yield* sessions.children(sessionID).pipe(
+                Effect.map((c) => c.length),
+                Effect.catch(() => Effect.succeed(0)),
+              )
+              return { id: s.id, parentID: s.parentID, version: s.version, childrenCount }
+            }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+          : undefined
+
+        // 系统信息
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+        const utcOffset = -new Date().getTimezoneOffset()
+        const utcStr = `UTC${utcOffset >= 0 ? "+" : ""}${Math.floor(utcOffset / 60)}:${String(utcOffset % 60).padStart(2, "0")}`
+
+        // Git 工作树状态（同步执行 git status，允许失败）
+        const gitStatus = yield* Effect.sync(() => {
+          try {
+            const out = execSync("git status --porcelain", {
+              cwd: ctx.worktree, encoding: "utf-8", timeout: 3000,
+              stdio: ["pipe", "pipe", "pipe"],
+            })
+            const lines = out.trim().split("\n").filter(Boolean)
+            if (lines.length === 0) return { dirty: false, staged: 0, unstaged: 0, total: 0 }
+            let staged = 0
+            for (const l of lines) {
+              const c = l[0]
+              if (c === "M" || c === "A" || c === "D" || c === "R" || c === "C") staged++
+            }
+            return { dirty: true, staged, unstaged: lines.length - staged, total: lines.length }
+          } catch (error) {
+            Log.Default.warn("无法执行 git status", {
+              worktree: ctx.worktree,
+              error: error instanceof Error ? error.message : String(error),
+            })
+            return undefined
+          }
+        })
+
+        // Shell 信息
+        const shellPath = process.env.SHELL || process.env.ComSpec || ""
+        const shellName = shellPath.includes("bash") ? "bash"
+          : shellPath.includes("zsh") ? "zsh"
+          : shellPath.includes("fish") ? "fish"
+          : shellPath.includes("cmd.exe") ? "cmd"
+          : shellPath.includes("powershell") || shellPath.includes("pwsh") ? "pwsh"
+          : shellPath || "未知"
+
+        // git 分支/提交信息（同步读取，允许失败）
+        const gitInfo = yield* Effect.sync(() => {
+          try {
+            const gitDir = path.join(ctx.worktree, ".git")
+            const headPath = path.join(gitDir, "HEAD")
+            const head = fs.readFileSync(headPath, "utf-8").trim()
+            if (head.startsWith("ref: ")) {
+              const branch = head.slice(5)
+              try {
+                const commitPath = path.join(gitDir, branch)
+                const sha = fs.readFileSync(commitPath, "utf-8").trim().slice(0, 12)
+                return { branch, commit: sha }
+              } catch {
+                return { branch, commit: undefined }
+              }
+            }
+            return { branch: "HEAD", commit: head.slice(0, 12) }
+          } catch {
+            return undefined
+          }
+        })
+
+        // 常用软件版本（同步检查常见 CLI 工具，允许失败）
+        const software: { name: string; version: string }[] = []
+        for (const [name, cmd, flag] of [
+          ["Node.js", "node", "--version"],
+          ["npm", "npm", "--version"],
+          ["pnpm", "pnpm", "--version"],
+          ["Yarn", "yarn", "--version"],
+          ["Git", "git", "--version"],
+          ["GitHub CLI", "gh", "--version"],
+          ["Rust", "rustc", "--version"],
+          ["Cargo", "cargo", "--version"],
+          ["Go", "go", "version"],
+          ["Python", "python", "--version"],
+          ["Docker", "docker", "--version"],
+        ] as const) {
+          try {
+            const out = execSync(`${cmd} ${flag}`, {
+              encoding: "utf-8", timeout: 3000,
+              stdio: ["pipe", "pipe", "pipe"],
+            })
+            software.push({ name, version: out.trim().split("\n")[0] })
+          } catch (error) {
+            Log.Default.debug("工具未安装", {
+              tool: name,
+              command: `${cmd} ${flag}`,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+
+        const lines: (string | undefined)[] = [
+          `你的底层模型是 ${model.api.id}，精确模型 ID 是 ${model.providerID}/${model.api.id}`,
+          `以下是你运行环境的一些有用信息：`,
+          `<env>`,
+          `  工作目录：${ctx.directory}`,
+          `  工作区根目录：${ctx.worktree}`,
+          `  是否为 git 仓库：${ctx.project.vcs === "git" ? "是" : "否"}`,
+          `  平台：${process.platform}`,
+          `  当前日期：${new Date().toDateString()}`,
+          ``,
+          `  <process>`,
+          `    启动方式：${startMode}`,
+          `    二进制路径：${process.execPath}`,
+          `    运行 ID：${process.env.OPENCODE_RUN_ID ?? "未知"}`,
+          `    进程角色：${process.env.OPENCODE_PROCESS_ROLE ?? "main"}`,
+          `    进程 PID：${process.pid}`,
+          `  </process>`,
+          ``,
+          `  <database>`,
+          `    数据库路径：${Database.path()}`,
+          `    数据库渠道：${getDatabaseChannel()}`,
+          `    数据库文件存在：${fs.existsSync(Database.path()) ? "是" : "否"}`,
+          `  </database>`,
+          ``,
+          `  <paths>`,
+          `    数据目录：${Global.Path.data}`,
+          `    日志文件：${Log.file()}`,
+          `    缓存目录：${Global.Path.cache}`,
+          `    临时目录：${Global.Path.tmp}`,
+          `  </paths>`,
+          ``,
+          `  <system>`,
+          `    时区：${tz}（${utcStr}）`,
+          `    Bun 版本：${Bun.version}`,
+          `    CPU 核心：${os.cpus().length}`,
+          `    内存：${Math.round(os.totalmem() / (1024 ** 3))} GB`,
+          `    主机名：${os.hostname()}`,
+          `  </system>`,
+          ``,
+          `  <shell>`,
+          `    默认 Shell：${shellName}`,
+          `    路径：${shellPath || "无"}`,
+          `  </shell>`,
+          ``,
+          `  <software>`,
+          ...softwareSlice,
+          `  </software>`,
+          ...(sessionInfo
+            ? [
+                `  <session>`,
+                `    Session ID：${sessionInfo.id}`,
+                `    父 Session ID：${sessionInfo.parentID ?? "无（根 session）"}`,
+                `    接续次数（子 session 数量）：${sessionInfo.childrenCount}`,
+                `    Session 版本：${sessionInfo.version}`,
+                `  </session>`,
+              ]
+            : []),
+          ...(isEvolveMode()
+            ? [
+                `  <mode>`,
+                `    进化模式：激活`,
+                `    临时目录：${process.env.S_CODE_TEMP ?? "无"}`,
+                readEvolveMessage() ? `    消息：${readEvolveMessage()}` : undefined,
+                `  </mode>`,
+              ]
+            : []),
+          ``,
+          `  <build>`,
+          `    版本：${InstallationVersion}`,
+          `    渠道：${InstallationChannel}`,
+          gitInfo ? `    git 分支：${gitInfo.branch}` : undefined,
+          gitInfo?.commit ? `    git commit：${gitInfo.commit}` : undefined,
+          gitStatus ? `    工作树：${gitStatus.dirty ? `有 ${gitStatus.total} 个文件更改（暂存 ${gitStatus.staged}，未暂存 ${gitStatus.unstaged}）` : "干净"}` : undefined,
+          `  </build>`,
+          `</env>`,
         ]
+
+        return [lines.filter((l): l is string => l !== undefined).join("\n")]
       }),
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {

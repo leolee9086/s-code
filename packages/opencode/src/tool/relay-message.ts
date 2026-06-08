@@ -1,36 +1,23 @@
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
-import { ForeverRelay } from "@/forever/relay"
-import type { SessionID } from "@/session/schema"
+import { Channel } from "@/channel/channel"
 
-// 中继注入函数（按设计文档第 4 节）
+// 使用 Channel.Adapter 发送中继消息
 function relayInject(input: {
   targetSessionID: string
   messages: Array<{ role: string; content: string }>
   mode: "suffix_once"
 }): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const relayOption = yield* Effect.serviceOption(ForeverRelay.RelayService).pipe(Effect.orDie)
-    if (relayOption._tag === "None") return
-    const relay = relayOption.value
+    const channelOption = yield* Effect.serviceOption(Channel.Service).pipe(Effect.orDie)
+    if (channelOption._tag === "None") return
+    const adapter = channelOption.value
 
-    const children = yield* relay.children().pipe(Effect.orDie)
-    const route = children.find((r: { sessionID: string }) => r.sessionID === input.targetSessionID)
-    if (!route) return
-
-    // 通过 HTTP 向副本的 relay 端点注入消息
-    yield* Effect.tryPromise({
-      try: () =>
-        fetch(`${route.httpURL}/api/relay/inject`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            targetSessionID: input.targetSessionID,
-            messages: [{ type: "text" as const, text: input.messages[0]?.content ?? "", synthetic: true as const }],
-          }),
-        }),
-      catch: () => {},
-    }).pipe(Effect.ignore)
+    // 使用 Channel.Adapter 的 typed send 方法
+    yield* adapter.send(input.targetSessionID, {
+      type: "inject",
+      messages: [{ type: "text", text: input.messages[0]?.content ?? "", synthetic: true }],
+    })
   })
 }
 

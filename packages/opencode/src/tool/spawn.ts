@@ -2,12 +2,13 @@ import { Effect, Schema, Option } from "effect"
 import * as Tool from "./tool"
 import { Agent } from "@/agent/agent"
 import { Session } from "@/session/session"
-import type { SessionID } from "@/session/schema"
+import { SessionID, MessageID, PartID } from "@/session/schema"
+import { SessionLegacy } from "@opencode-ai/core/session/legacy"
+import { getDatabaseChannel } from "@opencode-ai/core/installation/version"
 import { deriveSubagentSessionPermission } from "@/agent/subagent-permissions"
-
-function findAvailablePort(start: number): number {
-  return start + Math.floor(Math.random() * 100)
-}
+import { Channel } from "@/channel/channel"
+import path from "path"
+import { fileURLToPath } from "url"
 
 export const Parameters = Schema.Struct({
   description: Schema.String.annotate({ description: "副本的任务描述" }),
@@ -17,9 +18,8 @@ export const Parameters = Schema.Struct({
 
 type Metadata = {
   childSessionID: string
+  spawnDepth: number
 }
-
-const childPIDs = new Map<string, number>()
 
 export const SpawnTool = Tool.define<typeof Parameters, Metadata, Agent.Service | Session.Service>(
   "spawn",
@@ -40,14 +40,34 @@ export const SpawnTool = Tool.define<typeof Parameters, Metadata, Agent.Service 
 
           const childAgent = yield* agents.get(params.agent).pipe(Effect.option)
           if (Option.isNone(childAgent)) {
-            return { title: "spawn", output: `Agent "${params.agent}" not found`, metadata: { childSessionID: "" } } satisfies Tool.ExecuteResult<Metadata>
+            return { title: "spawn", output: `Agent "${params.agent}" not found`, metadata: { childSessionID: "", spawnDepth: 0 } } satisfies Tool.ExecuteResult<Metadata>
           }
           if (childAgent.value.mode === "primary") {
-            return { title: "spawn", output: "Cannot spawn primary agent", metadata: { childSessionID: "" } } satisfies Tool.ExecuteResult<Metadata>
+            return { title: "spawn", output: "Cannot spawn primary agent", metadata: { childSessionID: "", spawnDepth: 0 } } satisfies Tool.ExecuteResult<Metadata>
           }
 
-          // 1. 创建空白子 session（不继承父消息）
-          const childSession = yield* sessions.create({ parentID: ctx.sessionID as SessionID }).pipe(Effect.orDie)
+          // ── Spawn Depth 检查 ──
+          // 读取当前 session 的 spawn depth，防止无限递归
+          const parentSession = yield* sessions.get(ctx.sessionID as SessionID).pipe(Effect.option)
+          const currentDepth: number = parentSession._tag === "Some"
+            ? (parentSession.value.metadata?.[Channel.SPAWN_DEPTH_KEY] ?? 0)
+            : 0
+
+          if (currentDepth >= Channel.MAX_SPAWN_DEPTH) {
+            return {
+              title: "spawn",
+              output: `Spawn depth limit reached (${Channel.MAX_SPAWN_DEPTH}). Cannot spawn deeper nested agents.`,
+              metadata: { childSessionID: "", spawnDepth: currentDepth },
+            } satisfies Tool.ExecuteResult<Metadata>
+          }
+
+          // 1. 创建空白子 session，记录 parentID 和 spawn depth
+          const childDepth = currentDepth + 1
+          const childSession = yield* sessions.create({
+            parentID: ctx.sessionID as SessionID,
+            metadata: { [Channel.SPAWN_DEPTH_KEY]: childDepth },
+          }).pipe(Effect.orDie)
+
           const parentAgent = yield* agents.get(ctx.agent).pipe(Effect.option, Effect.map((o) => o ?? undefined))
           const childPermission = deriveSubagentSessionPermission({
             parentSessionPermission: [],
@@ -56,56 +76,54 @@ export const SpawnTool = Tool.define<typeof Parameters, Metadata, Agent.Service 
           })
           yield* sessions.setPermission({ sessionID: childSession.id, permission: childPermission }).pipe(Effect.orDie)
 
-          // 2. 构造子进程启动数据
-          const childInit = {
-            sessionID: childSession.id,
-            agent: params.agent,
-            prompt: params.prompt,
-            permission: childPermission,
-            parent: {
-              sessionID: ctx.sessionID,
-              httpURL: process.env["OPENCODE_HTTP_URL"] ?? "http://localhost:4096",
-            },
+          // 2. 写初始 prompt 到子 session
+          if (params.prompt) {
+            const now = Date.now()
+            const userMsg: SessionLegacy.User = {
+              id: MessageID.ascending(),
+              sessionID: childSession.id as SessionID,
+              role: "user",
+              time: { created: now },
+              agent: params.agent,
+              model: { providerID: "" as any, modelID: "" as any },
+            }
+            yield* sessions.updateMessage(userMsg).pipe(Effect.orDie)
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              messageID: userMsg.id,
+              sessionID: childSession.id as SessionID,
+              type: "text",
+              text: params.prompt,
+            } as SessionLegacy.TextPart).pipe(Effect.orDie)
           }
 
-          // 3. 启动子进程（在 Windows 上打开新控制台窗口）
-          if ((params as any).node) {
-            // yield* startChildOnNode((params as any).node, childInit) -- 留空：远程节点启动不在本节范围内
+          // 3. 启动完整实例，通过环境变量传递 spawn depth
+          const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
+          const binPath = process.execPath?.replace(/\\/g, "/") ?? process.argv[0]
+          const isBun = binPath.endsWith("bun") || binPath.endsWith("bun.exe")
+          const channel = getDatabaseChannel()
+          const cp = require("child_process") as typeof import("child_process")
+          const childEnv = {
+            ...process.env as Record<string, string>,
+            OPENCODE_SPAWN_DEPTH: String(childDepth),
+          }
+
+          if (isBun) {
+            cp.spawn("cmd", ["/c", "start", "", "cmd", "/c", "bun", "run", "--conditions=browser",
+              "./src/index.ts", "--session", childSession.id, "--channel", channel], {
+              cwd: pkgDir, detached: true, stdio: "ignore", env: childEnv,
+            })
           } else {
-            // built 二进制下 process.argv[1] 是 CLI 参数而非入口脚本，需要区分
-            const binPath = process.execPath?.replace(/\\/g, "/") ?? process.argv[0]
-            const isBun = binPath.endsWith("bun") || binPath.endsWith("bun.exe")
-            // bun dev 需要传入口脚本（process.argv[1]），built 二进制直接传可执行文件
-            const childArgs = isBun
-              ? [process.argv[1], "spawn", JSON.stringify(childInit), "--port", String(findAvailablePort(4097))]
-              : ["spawn", JSON.stringify(childInit), "--port", String(findAvailablePort(4097))]
-            // 确保子进程继承 OPENCODE_CHANNEL（如果父进程通过 --channel 设置了的话）
-            const childEnv = { ...process.env as Record<string, string>, PARENT_HTTP_URL: childInit.parent.httpURL }
-            let childPid = 0
-
-            if (process.platform === "win32") {
-              // Windows: 用 cmd.exe /c start 打开新控制台窗口
-              const cp = require("child_process") as typeof import("child_process")
-              const proc = cp.spawn("cmd.exe", [
-                "/c", "start", "Spawn Session", "cmd", "/c",
-                binPath, ...childArgs,
-              ], { detached: true, stdio: "ignore", env: childEnv })
-              childPid = proc.pid ?? 0
-            } else {
-              const child = Bun.spawn([binPath, ...childArgs], {
-                detached: true, env: childEnv,
-              })
-              child.unref()
-              childPid = child.pid ?? 0
-            }
-
-            childPIDs.set(childSession.id, childPid)
+            cp.spawn("cmd", ["/c", "start", "", "cmd", "/c", binPath,
+              "--session", childSession.id, "--channel", channel], {
+              detached: true, stdio: "ignore", env: childEnv,
+            })
           }
 
           return {
             title: `Spawn: ${params.description.slice(0, 60)}`,
             output: `副本已启动。Session: ${childSession.id}。使用 relayMessage 工具与其通信。`,
-            metadata: { childSessionID: childSession.id },
+            metadata: { childSessionID: childSession.id, spawnDepth: childDepth },
           } satisfies Tool.ExecuteResult<Metadata>
         }),
     } satisfies Tool.DefWithoutID<typeof Parameters, Metadata>
