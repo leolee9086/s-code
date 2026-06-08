@@ -152,6 +152,8 @@ export const layer = Layer.effect(
           ["Cargo", "cargo", "--version"],
           ["Go", "go", "version"],
           ["Python", "python", "--version"],
+          ["pip", "pip", "--version"],
+          ["Bun", "bun", "--version"],
           ["Docker", "docker", "--version"],
         ] as const) {
           try {
@@ -214,7 +216,9 @@ export const layer = Layer.effect(
           `  </shell>`,
           ``,
           `  <software>`,
-          ...softwareSlice,
+          ...(software.length > 0
+            ? software.map(({ name, version }) => `    ${name}：${version}`)
+            : [`    未检测到常用软件`]),
           `  </software>`,
           ...(sessionInfo
             ? [

@@ -19,6 +19,7 @@ import { QuestionApi } from "./groups/question"
 import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
 import { TuiApi } from "./groups/tui"
+import { QueueApi } from "./groups/queue"
 import { WorkspaceApi } from "./groups/workspace"
 import { V2Api } from "./groups/v2"
 // GlobalEventSchema snapshots the registry after event-producing groups register their variants.
@@ -60,6 +61,7 @@ export const InstanceHttpApi = HttpApi.make("opencode-instance")
   .addHttpApi(ProviderApi)
   .addHttpApi(SessionApi)
   .addHttpApi(SyncApi)
+  .addHttpApi(QueueApi)
   .addHttpApi(V2Api)
   .addHttpApi(TuiApi)
   .addHttpApi(WorkspaceApi)

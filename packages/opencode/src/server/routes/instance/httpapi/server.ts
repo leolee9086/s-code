@@ -75,6 +75,7 @@ import { globalHandlers } from "./handlers/global"
 import { experimentalHandlers } from "./handlers/experimental"
 import { fileHandlers } from "./handlers/file"
 import { injectionHandlers } from "./handlers/injection"
+import { queueHandlers, QueueServiceLive } from "./handlers/queue"
 import { Injection } from "@/session/injection"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
@@ -139,6 +140,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     experimentalHandlers,
     fileHandlers,
     injectionHandlers,
+    queueHandlers,
     instanceHandlers,
     mcpHandlers,
     projectHandlers,
@@ -242,6 +244,7 @@ export function createRoutes(
       FetchHttpClient.layer,
       HttpServer.layerServices,
       Injection.defaultLayer,
+      QueueServiceLive,
     ]),
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(InstanceLayer.layer),
