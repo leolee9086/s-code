@@ -101,6 +101,7 @@ function isOrphanedInterruptedTool(part: SessionLegacy.ToolPart) {
 
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
+  readonly interruptAndInject: (sessionID: SessionID, text: string) => Effect.Effect<void>
   readonly prompt: (input: PromptInput) => Effect.Effect<SessionLegacy.WithParts, Image.Error>
   readonly loop: (input: LoopInput) => Effect.Effect<SessionLegacy.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<SessionLegacy.WithParts, Session.BusyError>
@@ -157,6 +158,51 @@ export const layer = Layer.effect(
     const cancel = Effect.fn("SessionPrompt.cancel")(function* (sessionID: SessionID) {
       yield* elog.info("cancel", { sessionID })
       yield* state.cancel(sessionID)
+    })
+
+    /** 创建一条独立的合成用户消息并写入数据库。
+     *  以最后一条用户消息的 agent/model 为准，确保模型推理时上下文连续。 */
+    const injectUserMessage = Effect.fn("SessionPrompt.injectUserMessage")(function* (
+      sessionID: SessionID,
+      text: string,
+    ) {
+      const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+        Effect.provideService(Database.Service, database),
+      )
+      const { user: lastUser } = MessageV2.latest(msgs)
+      if (!lastUser) {
+        yield* elog.warn("injectUserMessage: no user message found", { sessionID })
+        return
+      }
+      const msg: SessionLegacy.User = {
+        id: MessageID.ascending(),
+        sessionID,
+        role: "user",
+        time: { created: Date.now() },
+        agent: lastUser.agent,
+        model: lastUser.model,
+      }
+      yield* sessions.updateMessage(msg)
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: msg.id,
+        sessionID,
+        type: "text",
+        text,
+        synthetic: true,
+      } satisfies SessionLegacy.TextPart)
+    })
+
+    /** 打断当前 LLM 循环 → 注入独立用户消息 → 重启循环。
+     *  用于 Ring 0 外部消息入站，让 LLM 立即感知新消息。 */
+    const interruptAndInject = Effect.fn("SessionPrompt.interruptAndInject")(function* (
+      sessionID: SessionID,
+      text: string,
+    ) {
+      yield* elog.info("interruptAndInject", { sessionID })
+      yield* state.cancel(sessionID)
+      yield* injectUserMessage(sessionID, text)
+      yield* Effect.forkIn(scope)(loop({ sessionID }).pipe(Effect.asVoid, Effect.ignore))
     })
 
     const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
@@ -2102,6 +2148,7 @@ export const layer = Layer.effect(
 
     return Service.of({
       cancel,
+      interruptAndInject,
       prompt,
       loop,
       shell,

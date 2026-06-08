@@ -58,6 +58,8 @@ const GeneratedAgent = Schema.Struct({
 export interface Interface {
   readonly get: (agent: string) => Effect.Effect<Info>
   readonly list: () => Effect.Effect<Info[]>
+  readonly register: (name: string, info: Info) => Effect.Effect<void>
+  readonly unregister: (name: string) => Effect.Effect<void>
   readonly defaultInfo: () => Effect.Effect<Info>
   readonly defaultAgent: () => Effect.Effect<string>
   readonly generate: (input: {
@@ -326,9 +328,19 @@ export const layer = Layer.effect(
           return (yield* defaultInfo()).name
         })
 
+        const register = Effect.fnUntraced(function* (name: string, info: Info) {
+          agents[name] = info
+        })
+
+        const unregister = Effect.fnUntraced(function* (name: string) {
+          delete agents[name]
+        })
+
         return {
           get,
           list,
+          register,
+          unregister,
           defaultInfo,
           defaultAgent,
         } satisfies State
@@ -344,6 +356,12 @@ export const layer = Layer.effect(
       }),
       defaultInfo: Effect.fn("Agent.defaultInfo")(function* () {
         return yield* InstanceState.useEffect(state, (s) => s.defaultInfo())
+      }),
+      register: Effect.fn("Agent.register")(function* (name: string, info: Info) {
+        yield* InstanceState.useEffect(state, (s) => s.register(name, info))
+      }),
+      unregister: Effect.fn("Agent.unregister")(function* (name: string) {
+        yield* InstanceState.useEffect(state, (s) => s.unregister(name))
       }),
       defaultAgent: Effect.fn("Agent.defaultAgent")(function* () {
         return yield* InstanceState.useEffect(state, (s) => s.defaultAgent())

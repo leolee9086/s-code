@@ -3,7 +3,7 @@
 // 通道适配器注册表。参考 s-forge kernel/nerv/magi/channel/registry.go。
 // 全局单例，管理所有已注册的 ChannelAdapter。
 
-import { Context, Effect } from "effect"
+import { Context, Effect, Layer } from "effect"
 import type { ChannelAdapter } from "./adapter"
 import type { ChannelStatus } from "./types"
 
@@ -56,5 +56,15 @@ export class RegistryService extends Context.Service<
   RegistryService,
   RegistryInterface
 >()("@opencode/ChannelRegistry") {}
+
+export const defaultLayer = Layer.succeed(RegistryService, makeRegistry())
+
+/** 创建一个 Layer，在构建时向 Registry 注册一个适配器（直接操作模块级 Map，无 Service 依赖） */
+export const registerAdapter = (adapter: ChannelAdapter): Layer.Layer<never> =>
+  Layer.effectDiscard(
+    Effect.sync(() => {
+      adapters.set(adapter.id, adapter)
+    }),
+  )
 
 export * as ChannelRegistry from "./registry"

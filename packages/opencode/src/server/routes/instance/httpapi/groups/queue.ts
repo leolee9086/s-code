@@ -14,11 +14,15 @@ export const QueuePushPayload = Schema.Struct({
   accountId: Schema.String,
   userId: Schema.String,
   nickname: Schema.optional(Schema.String),
+  conversationToken: Schema.optional(Schema.String),
   text: Schema.optional(Schema.String),
   timestamp: Schema.optional(Schema.Number),
-  ring: Schema.optional(Schema.Number),
+  ring: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 3 }))),
   taskType: Schema.String,
   taskPayload: Schema.optional(Schema.Unknown),
+  // 如果提供 sessionID，队列会 bind 到 conversationToken，dispatcher 据此路由
+  sessionID: Schema.optional(Schema.String),
+  dedupeKey: Schema.optional(Schema.String),
 }).annotate({ identifier: "QueuePushPayload" })
 
 export const QueuePushResponse = Schema.Struct({

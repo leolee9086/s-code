@@ -12,9 +12,11 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
+import { Effect } from "effect"
 import * as Log from "@opencode-ai/core/util/log"
 
 const log = Log.create({ service: "channel.queue" })
+const MAX_RETRIES = 3
 
 export const RING_COUNT = 4
 
@@ -47,6 +49,7 @@ export interface MessageRecord {
   // ── 队列控制字段 ──
   seq: number
   status: MessageRecordStatus
+  dedupeKey?: string       // 可选去重键，相同键的消息只会被入队一次
   direction: "inbound" | "outbound"
   taskType: string              // "search" | "shell" | "read" | "write" | "edit" | "git"
   taskPayload: unknown          // 请求参数
@@ -57,7 +60,7 @@ export interface MessageRecord {
 
 export interface RingQueueInterface {
   readonly push: (ring: TaskRing, msg: Omit<MessageRecord, "id" | "ring" | "seq" | "status" | "retryCount"> & { timestamp?: number }) => string
-  readonly popBlocking: () => MessageRecord | undefined
+  readonly popNonBlocking: () => MessageRecord | undefined
   readonly len: () => number
   readonly ringLen: (ring: TaskRing) => number
   readonly markDelivered: (id: string) => void
@@ -78,8 +81,8 @@ function resolveWALPath(): string {
 export const makeRingQueue = (walPath?: string): RingQueueInterface => {
   const path = walPath ?? resolveWALPath()
   const rings: MessageRecord[][] = [ [], [], [], [] ]
+  const seen = new Set<string>()    // 已投递/失败的消息 ID，用于去重
   let seq = 0
-  let notify: (() => void) | null = null
 
   // 从 WAL 恢复未完成的消息
   if (existsSync(path)) {
@@ -87,7 +90,8 @@ export const makeRingQueue = (walPath?: string): RingQueueInterface => {
       for (const line of readFileSync(path, "utf-8").split("\n").filter(Boolean)) {
         try {
           const rec = JSON.parse(line) as MessageRecord
-          if (rec.status === "delivered" || rec.status === "failed" || rec.status === "delivering") continue
+          // 注意：delivering 不跳过——崩溃时正在处理的消息应恢复为 pending 重新处理
+          if (rec.status === "delivered" || rec.status === "failed") { if (rec.dedupeKey) seen.add(rec.dedupeKey); continue }
           rec.status = "pending"
           if (rec.ring >= 0 && rec.ring < RING_COUNT) {
             rings[rec.ring].push(rec)
@@ -114,13 +118,14 @@ export const makeRingQueue = (walPath?: string): RingQueueInterface => {
     if (opsSinceCheckpoint >= 50) { checkpoint(); opsSinceCheckpoint = 0 }
   }
 
-  // 条件变量：push 后通知等待的 pop
-  let waitResolve: (() => void) | null = null
-  const signal = () => { const r = waitResolve; waitResolve = null; r?.() }
+  // 条件变量：push 后通知等待的 pop（消除空轮询，未实现）
+  // popNonBlocking 不阻塞，队列空时 dispatcher 用 Effect.sleep 等待
 
   return {
     push: (ring, msg) => {
       if (ring < 0 || ring >= RING_COUNT) return ""
+      // 去重：如果 dedupeKey 已处理过（delivered/failed），忽略此消息
+      if (msg.dedupeKey && seen.has(msg.dedupeKey)) return ""
       const id = `q-${Date.now()}-${seq}`
       const rec: MessageRecord = {
         id, ring,
@@ -137,11 +142,10 @@ export const makeRingQueue = (walPath?: string): RingQueueInterface => {
       }
       rings[ring].push(rec)
       appendFileSync(path, JSON.stringify(rec) + "\n", "utf-8")
-      signal()
       return id
     },
 
-    popBlocking: () => {
+    popNonBlocking: () => {
       // 非阻塞扫描一次
       for (let i = 0; i < RING_COUNT; i++) {
         const idx = rings[i].findIndex(m => m.status === "pending")
@@ -154,6 +158,8 @@ export const makeRingQueue = (walPath?: string): RingQueueInterface => {
     ringLen: (r) => (r >= 0 && r < RING_COUNT ? rings[r].length : 0),
 
     markDelivered: (id) => {
+      const rec = [...rings.flat()].find(x => x.id === id)
+      if (rec?.dedupeKey) seen.add(rec.dedupeKey)
       for (const r of rings) {
         const m = r.find(x => x.id === id)
         if (m) { m.status = "delivered"; m.deliveredAt = Date.now(); maybeCheckpoint(); return }
@@ -161,9 +167,19 @@ export const makeRingQueue = (walPath?: string): RingQueueInterface => {
     },
 
     markFailed: (id, error) => {
+      const rec = [...rings.flat()].find(x => x.id === id)
+      if (rec?.dedupeKey) seen.add(rec.dedupeKey)
       for (const r of rings) {
         const m = r.find(x => x.id === id)
-        if (m) { m.status = "failed"; m.error = error; m.retryCount++; maybeCheckpoint(); return }
+        if (!m) return
+        m.error = error
+        m.retryCount++
+        if (m.retryCount < MAX_RETRIES) {
+          m.status = "pending"  // 重新入队，下次 popBlocking 可再次取出
+        } else {
+          m.status = "failed"  // 超过最大重试次数，永久标记失败
+        }
+        maybeCheckpoint()
       }
     },
 
@@ -171,41 +187,37 @@ export const makeRingQueue = (walPath?: string): RingQueueInterface => {
   }
 }
 
-// ── 阻塞等待 ─────────────────────────────────────────────
-
-/** 在 popBlocking 返回 undefined 时调用此函数阻塞，等待下一个 push */
-export function waitForTask(q: RingQueueInterface): Promise<MessageRecord> {
-  return new Promise((resolve) => {
-    const poll = () => {
-      const task = q.popBlocking()
-      if (task) { resolve(task); return }
-      // 没任务，50ms 后重试（对比 s-forge：Go channel 原生阻塞）
-      // 这里用短轮询 + 条件变量优化：push 会调用 signal 但 Promise 无法中断等待
-      setTimeout(poll, 50)
-    }
-    poll()
-  })
-}
-
-// ── Dispatcher（不硬编码分发逻辑） ───────────────────────
+// ── Dispatcher（Effect 原生，不逃逸运行时） ──────────────
 //
-// dispatcher 只负责：pop → markDelivered → notify
-// onMessage 回调由外部提供，根据 ring 自行决定处理方式
+// dispatcher 本身是一个 Effect，在 Effect 运行时内运行。
+// onMessage 返回 Effect<void>，由 dispatcher 通过 yield* 调用。
+// 无需 runPromise、无需自制 runtime。
 
-export type DispatchHandler = (rec: MessageRecord) => void
+export type DispatchHandler = (rec: MessageRecord) => Effect.Effect<void>
 
-export function runDispatcher(q: RingQueueInterface, onMessage: DispatchHandler): void {
-  const loop = () => {
-    const task = q.popBlocking()
+export interface DispatcherControl { readonly stop: () => void }
+
+export const runDispatcher = Effect.fn("QueueDispatcher.run")(function* (
+  q: RingQueueInterface,
+  onMessage: DispatchHandler,
+) {
+  const control: { stop(): void; stopped?: boolean } = { stop() { this.stopped = true }, stopped: false }
+  while (!control.stopped) {
+    const task = q.popNonBlocking()
     if (task) {
-      q.markDelivered(task.id)
-      onMessage(task)
-      setImmediate(loop)
-      return
+      const ok = yield* onMessage(task).pipe(
+        Effect.map(() => true),
+        Effect.catch((err) =>
+          Effect.sync(() => { log.warn("handler failed, marked as failed", { id: task.id, err }); return false })
+        ),
+      )
+      if (ok) q.markDelivered(task.id)
+      else q.markFailed(task.id, "handler rejected")
+    } else {
+      yield* Effect.sleep("50 millis")
     }
-    setTimeout(loop, 50)
   }
-  loop()
-}
+  return control
+})
 
 export * as ChannelQueue from "./queue"

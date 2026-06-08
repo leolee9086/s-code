@@ -17,6 +17,8 @@ import { SessionQueryTool } from "./session_query"
 import { SessionMessageReadTool } from "./session_message_read"
 import { SpawnTool } from "./spawn"
 import { RelayMessageTool } from "./relay-message"
+import { SendChannelMessageTool } from "./send-channel-message"
+import { ListChannelsTool } from "./list-channels"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -141,6 +143,8 @@ export const layer: Layer.Layer<
     const sessionMsgRead = yield* SessionMessageReadTool
     const spawn = yield* SpawnTool
     const relayMsg = yield* RelayMessageTool
+    const sendChannelMsg = yield* SendChannelMessageTool
+    const listChannels = yield* ListChannelsTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -253,6 +257,8 @@ export const layer: Layer.Layer<
           session_message_read: Tool.init(sessionMsgRead),
           spawn: Tool.init(spawn),
           relay_message: Tool.init(relayMsg),
+          send_channel_message: Tool.init(sendChannelMsg),
+          list_channels: Tool.init(listChannels),
         })
 
         return {
@@ -278,6 +284,8 @@ export const layer: Layer.Layer<
             tool.session_message_read,
             tool.spawn,
             tool.relay_message,
+            tool.send_channel_message,
+            tool.list_channels,
           ],
           task: tool.task,
           read: tool.read,

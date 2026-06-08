@@ -83,6 +83,22 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
       return yield* agent.list()
     })
 
+    const agentRegister = Effect.fn("InstanceHttpApi.agentRegister")(function* (ctx: {
+      payload: unknown
+    }) {
+      const info = ctx.payload as { name: string; [key: string]: unknown }
+      if (!info.name) return false
+      yield* agent.register(info.name, info as any)
+      return true
+    })
+
+    const agentUnregister = Effect.fn("InstanceHttpApi.agentUnregister")(function* (ctx: {
+      payload: string
+    }) {
+      yield* agent.unregister(ctx.payload)
+      return true
+    })
+
     const getSkill = Effect.fn("InstanceHttpApi.skill")(function* () {
       return yield* skill.all()
     })
@@ -109,6 +125,8 @@ export const instanceHandlers = HttpApiBuilder.group(InstanceHttpApi, "instance"
       .handle("vcsApply", applyVcs)
       .handle("command", getCommand)
       .handle("agent", getAgent)
+      .handle("agentRegister", agentRegister)
+      .handle("agentUnregister", agentUnregister)
       .handle("skill", getSkill)
       .handle("lsp", getLsp)
       .handle("formatter", getFormatter)

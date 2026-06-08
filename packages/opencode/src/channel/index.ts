@@ -6,6 +6,5 @@ export * from "./types"
 export * from "./adapter"
 export * from "./registry"
 export * from "./queue"
-export * from "./subprocess-transport"
 
-export * as Channel from "./index"
+export * as Channel from "."

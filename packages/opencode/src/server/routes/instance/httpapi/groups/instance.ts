@@ -16,6 +16,10 @@ import {
 } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 
+const AgentRegisterPayload = Schema.Record(Schema.String, Schema.Unknown).annotate({
+  identifier: "AgentRegisterPayload",
+})
+
 const PathInfo = Schema.Struct({
   home: Schema.String,
   state: Schema.String,
@@ -51,6 +55,8 @@ export const InstancePaths = {
   vcsApply: "/vcs/apply",
   command: "/command",
   agent: "/agent",
+  agentRegister: "/agent/register",
+  agentUnregister: "/agent/unregister",
   skill: "/skill",
   lsp: "/lsp",
   formatter: "/formatter",
@@ -156,6 +162,26 @@ export const InstanceApi = HttpApi.make("instance")
             identifier: "app.agents",
             summary: "List agents",
             description: "Get a list of all available AI agents in the OpenCode system.",
+          }),
+        ),
+        HttpApiEndpoint.post("agentRegister", InstancePaths.agentRegister, {
+          payload: AgentRegisterPayload,
+          success: described(Schema.Unknown, "Agent registered"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "app.agents.register",
+            summary: "Register an external agent",
+            description: "Register a new agent definition from an external source (e.g., s-forge avatar system).",
+          }),
+        ),
+        HttpApiEndpoint.post("agentUnregister", InstancePaths.agentUnregister, {
+          payload: Schema.String,
+          success: described(Schema.Unknown, "Agent unregistered"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "app.agents.unregister",
+            summary: "Unregister an agent",
+            description: "Remove a previously registered external agent.",
           }),
         ),
         HttpApiEndpoint.get("skill", InstancePaths.skill, {

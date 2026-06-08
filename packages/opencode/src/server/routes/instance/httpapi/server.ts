@@ -76,6 +76,8 @@ import { experimentalHandlers } from "./handlers/experimental"
 import { fileHandlers } from "./handlers/file"
 import { injectionHandlers } from "./handlers/injection"
 import { queueHandlers, QueueServiceLive } from "./handlers/queue"
+import { ChannelRegistry } from "@/channel/registry"
+import { makeConsoleAdapter } from "@/channel/console-adapter"
 import { Injection } from "@/session/injection"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
@@ -245,6 +247,8 @@ export function createRoutes(
       HttpServer.layerServices,
       Injection.defaultLayer,
       QueueServiceLive,
+      ChannelRegistry.defaultLayer,
+      ChannelRegistry.registerAdapter(makeConsoleAdapter("console")),
     ]),
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(InstanceLayer.layer),
