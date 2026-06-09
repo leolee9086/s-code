@@ -1660,6 +1660,32 @@ export const layer = Layer.effect(
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
             const system = [...env, ...instructions, ...(skills ? [skills] : [])]
+
+            // auto-plan 模式：告知模型当前 context 用量和编辑工具限制
+            const autoPlanCfg = (yield* config.get()).auto_plan
+            const autoPlanEnabled = autoPlanCfg?.enabled ?? true
+            if (autoPlanEnabled) {
+              const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"]
+              const threshold = autoPlanCfg?.context_threshold ?? 0.3
+              const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
+              if (Option.isSome(usage) && usage.value) {
+                const u = usage.value
+                system.unshift([
+                  `<auto-plan>`,
+                  `  上下文占用：${(u.percentage * 100).toFixed(1)}%（${u.usedTokens.toLocaleString()} / ${u.contextLimit.toLocaleString()} token）`,
+                  `  编辑工具（${blockedTools.join("、")}）需上下文占用超过 ${(threshold * 100).toFixed(0)}% 后才可用`,
+                  `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
+                  `</auto-plan>`,
+                ].join("\n"))
+              } else {
+                system.unshift([
+                  `<auto-plan>`,
+                  `  编辑工具（${blockedTools.join("、")}）需上下文占用超过 ${(threshold * 100).toFixed(0)}% 后才可用`,
+                  `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
+                  `</auto-plan>`,
+                ].join("\n"))
+              }
+            }
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({

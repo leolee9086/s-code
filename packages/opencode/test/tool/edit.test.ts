@@ -95,7 +95,11 @@ const autoRun = Effect.fn("EditToolTest.autoRun")(function* (
   const info = yield* fs.stat(args.filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
   if (!info) return yield* run({ ...args, mtime: 0, proof: "" })
   const content = yield* load(args.filePath)
-  const proof = content.split("\n").find(l => l.trim())?.trim() || "fallback-proof"
+  const lines = content.split("\n")
+  // 选取中间行的内容作为 proof（避开首尾行），格式 "行号: 行内容"
+  const midIdx = Math.floor(lines.length / 2)
+  const proofLine = lines[midIdx]?.trim()
+  const proof = proofLine ? `${midIdx + 1}: ${proofLine}` : "fallback-proof"
   return yield* run({ mtime: Number(info.mtime), proof, ...args })
 })
 
@@ -532,7 +536,7 @@ describe("tool.edit", () => {
             oldString: "top = 0",
             newString: "top = 1",
             mtime,
-            proof: "top = 0",
+            proof: "2: middle = keep",
           },
           delayedCtx,
         ).pipe(Effect.forkScoped)
@@ -546,7 +550,7 @@ describe("tool.edit", () => {
               oldString: "bottom = 0",
               newString: "bottom = 2",
               mtime,
-              proof: "bottom = 0",
+              proof: "2: middle = keep",
             },
             delayedCtx,
           ),

@@ -131,7 +131,7 @@ export const EditTool = Tool.define(
               // Proof verification (anti-cheat, always checked)
               const actualMtime = Option.match(info.mtime, { onNone: () => 0, onSome: (d) => Number(d) })
               const proofLines = params.proof.split("\n").filter(Boolean)
-              const contentLines = contentOld.split("\n")
+              const contentLines = normalizeLineEndings(contentOld).split("\n")
 
               if (proofLines.length === 0) {
                 throw new Error(
