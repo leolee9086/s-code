@@ -25,7 +25,7 @@ import { inArray } from "drizzle-orm"
 import { lt } from "drizzle-orm"
 import { or } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
-import { PartTable, SessionTable } from "@opencode-ai/core/session/sql"
+import { MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { Log } from "@opencode-ai/core/util/log"
 import { MessageV2 } from "./message-v2"
@@ -991,28 +991,64 @@ export const layer: Layer.Layer<
      * 用于插件判断是否达到编辑工具解锁阈值
      */
     const contextUsage: Interface["contextUsage"] = Effect.fn("Session.contextUsage")(function* (sessionID) {
-      // 获取最后一条 assistant 消息以读取 token 用量
+      // 与 TUI (feature-plugins/sidebar/context.tsx) 使用一致的消息源和计算逻辑
       const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
         Effect.provideService(Database.Service, database),
       )
-      const last = msgs.findLast((m) => m.info.role === "assistant")
+      const last = msgs.findLast(
+        (m) => m.info.role === "assistant" && m.info.tokens && m.info.tokens.output > 0,
+      )
       if (!last) return null
       const lastAssistant = last.info
       if (lastAssistant.role !== "assistant") return null
-      if (!lastAssistant.tokens) return null
 
-      const tokens = lastAssistant.tokens
-      const total = tokens.total ?? tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+      let total: number
+      let modelFound = false
+      let contextLimit = 1_000_000
 
-      // 获取 model 的 context 限制
+      if (lastAssistant.tokens) {
+        const tokens = lastAssistant.tokens
+        total = tokens.total ?? tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
+        if (total > 0) {
+          // 有有效 token 用量，从 model 配置获取 context 限制
+          const model = yield* provider.getModel(
+            lastAssistant.providerID,
+            lastAssistant.modelID,
+          ).pipe(Effect.option)
+          if (Option.isSome(model) && model.value.limit.context > 0) {
+            contextLimit = model.value.limit.context
+          }
+          // model 未知或 contextLimit 为 0 时保持 1M fallback
+          return {
+            usedTokens: total,
+            contextLimit,
+            percentage: total / contextLimit,
+          }
+        }
+      }
+
+      // 模型不返回 usage 或 usage 为 0 时（如部分本地模型），从消息字符长度估算 token 数
+      // 约 4 字符 ≈ 1 token（中英文混合估算）
+      let charCount = 0
+      for (const msg of msgs) {
+        for (const part of msg.parts) {
+          if (part.type === "text") charCount += part.text.length
+          else if (part.type === "reasoning") charCount += part.text.length
+          else if (part.type === "tool") {
+            if (part.state.status === "completed") charCount += part.state.output.length
+          }
+        }
+      }
+      total = Math.ceil(charCount / 4)
+
+      // contextLimit 保持 1M fallback（模型未知或 context=0 时）
       const model = yield* provider.getModel(
         lastAssistant.providerID,
         lastAssistant.modelID,
       ).pipe(Effect.option)
-      if (Option.isNone(model)) return null
-
-      const contextLimit = model.value.limit.context
-      if (contextLimit === 0) return null
+      if (Option.isSome(model) && model.value.limit.context > 0) {
+        contextLimit = model.value.limit.context
+      }
 
       return {
         usedTokens: total,

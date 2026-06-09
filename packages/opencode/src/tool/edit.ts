@@ -4,7 +4,7 @@
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
 
 import * as path from "path"
-import { Effect, Schema, Semaphore } from "effect"
+import { Effect, Option, Schema, Semaphore } from "effect"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
@@ -57,7 +57,7 @@ export const Parameters = Schema.Struct({
     description: "文件 mtime（毫秒），从 Read(includeMeta:true) 获取。新文件（oldString=\"\"）填 0。",
   }),
   proof: Schema.String.annotate({
-    description: "文件中用于证明当前内容的非空行。新文件（oldString=\"\"）填空字符串。",
+    description: "反作弊证明，格式为 \"行号: 行内容\"（可从 Read 输出的行号前缀获取）。新文件（oldString=\"\"）填空字符串。禁止使用文件首行和末行。",
   }),
 })
 
@@ -128,26 +128,52 @@ export const EditTool = Tool.define(
               const source = yield* Bom.readFile(afs, filePath)
               contentOld = source.text
 
-              // Staleness verification: mtime + proof (both required)
-              if (Number(info.mtime) !== params.mtime) {
-                // mtime mismatch — check proof as fallback
-                const proofLines = params.proof.split("\n").map(l => l.trim()).filter(Boolean)
-                if (proofLines.length === 0) {
+              // Proof verification (anti-cheat, always checked)
+              const actualMtime = Option.match(info.mtime, { onNone: () => 0, onSome: (d) => Number(d) })
+              const proofLines = params.proof.split("\n").filter(Boolean)
+              const contentLines = contentOld.split("\n")
+
+              if (proofLines.length === 0) {
+                throw new Error(
+                  `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(actualMtime)}). ` +
+                  `Re-read the file with Read (includeMeta: true), include proof lines (in "行号: 行内容" format) with your edit invocation, then try again.`
+                )
+              }
+
+              for (const proofLine of proofLines) {
+                const match = proofLine.match(/^(\d+):\s*(.*)$/)
+                if (!match) {
                   throw new Error(
-                    `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(Number(info.mtime))}). ` +
-                    `Re-read the file with Read (includeMeta: true) and include proof lines with your edit invocation, then try again.`
-                  )
-                }
-                const allFound = proofLines.every(line => contentOld.includes(line))
-                if (!allFound) {
-                  throw new Error(
-                    `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(Number(info.mtime))}). ` +
-                    `Proof verification failed: ${proofLines.filter(l => !contentOld.includes(l)).length} line(s) not found in current file. ` +
+                    `Invalid proof format: each proof line must be in "行号: 行内容" format (e.g. "42: some content"). ` +
                     `Re-read the file with Read (includeMeta: true) and try again.`
                   )
                 }
+                const lineNumber = parseInt(match[1], 10)
+                const lineContent = match[2]
+
+                if (lineNumber < 1 || lineNumber > contentLines.length) {
+                  throw new Error(
+                    `Proof line number ${lineNumber} is out of range (file has ${contentLines.length} lines). ` +
+                    `Re-read the file with Read (includeMeta: true) and try again.`
+                  )
+                }
+
+                if (contentLines.length > 2 && (lineNumber <= 1 || lineNumber >= contentLines.length)) {
+                  throw new Error(
+                    `Proof line ${lineNumber} is at the file boundary (first or last line). ` +
+                    `Choose proof lines from the middle of the file (not the first or last line).`
+                  )
+                }
+
+                const actualLine = contentLines[lineNumber - 1]
+                if (actualLine !== lineContent) {
+                  throw new Error(
+                    `Proof verification failed at line ${lineNumber}: expected "${lineContent}" but found "${actualLine}". ` +
+                    `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(actualMtime)}). ` +
+                    `Re-read the file with Read (includeMeta: true) and include proof lines with your edit invocation, then try again.`
+                  )
+                }
               }
-              // mtime matches — pass silently
 
               const ending = detectLineEnding(contentOld)
               const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)

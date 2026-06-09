@@ -47,10 +47,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 
   const fullCfg = yield* config.get()
   const autoPlanCfg = fullCfg.auto_plan
-  const autoPlanEnabled = autoPlanCfg?.enabled ?? false
+  const autoPlanEnabled = autoPlanCfg?.enabled ?? true
   const autoPlanThreshold = autoPlanCfg?.context_threshold ?? 0.3
   const blockedEditTools = new Set(
-    autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "shell"],
+    // shell 工具注册 ID 为 "bash" (见 tool/shell/id.ts)
+    autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"],
   )
 
   const channel = getDatabaseChannel()

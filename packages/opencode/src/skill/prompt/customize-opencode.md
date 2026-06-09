@@ -1,58 +1,46 @@
 <!--
-  Built-in skill. Name and description are registered in code at
-  packages/opencode/src/skill/index.ts (see CUSTOMIZE_OPENCODE_SKILL_NAME
-  and CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION). The body below becomes the
-  skill's content.
+  内置技能。名称和描述在代码中注册于
+  packages/opencode/src/skill/index.ts（参见 CUSTOMIZE_OPENCODE_SKILL_NAME
+  和 CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION）。以下正文即为
+  技能的内容。
 -->
 
-# Customizing opencode
+# 自定义 opencode
 
-opencode validates its own config strictly and refuses to start when a field
-is wrong. The shapes below cover the common surface area, but they are a
-**summary, not the source of truth**.
+opencode 严格验证自己的配置，并在字段错误时拒绝启动。以下结构涵盖了常见配置面，但它们只是**摘要，而非权威来源**。
 
-## Full schema reference
+## 完整模式参考
 
-The authoritative list of every config option — with field types, enums,
-defaults, and descriptions — lives in the published JSON Schema:
+每个配置选项的权威列表——包含字段类型、枚举、默认值和描述——位于已发布的 JSON Schema 中：
 
 **<https://opencode.ai/config.json>**
 
-If a field is not documented in this skill, or you need to confirm an exact
-shape before writing config, **fetch that URL and read the schema directly**
-rather than guessing. opencode hard-fails on invalid config, so the cost of a
-wrong shape is a broken startup.
+如果此技能未记录某个字段，或者你在编写配置前需要确认确切结构，**请获取该 URL 并直接阅读 schema**，而不是猜测。opencode 在配置无效时会硬失败，因此错误结构的代价就是启动失败。
 
-Independently, every `opencode.json` should declare
-`"$schema": "https://opencode.ai/config.json"` so the user's editor catches
-mistakes as they type.
+此外，每个 `opencode.json` 都应声明
+`"$schema": "https://opencode.ai/config.json"`，以便用户的编辑器在输入时捕获错误。
 
-## Applying changes
+## 应用更改
 
-Config is loaded once when opencode starts and is not hot-reloaded. After
-saving changes to `opencode.json`, an agent file, a skill, a plugin, or any
-other config-time file, **tell the user to quit and restart opencode** for
-the changes to take effect. The running session will keep using the
-already-loaded config until then.
+配置在 opencode 启动时加载一次，不支持热重载。保存对 `opencode.json`、agent 文件、技能、插件或任何其他配置文件的更改后，**告知用户退出并重启 opencode** 以使更改生效。正在运行的会话将继续使用已加载的配置。
 
-## Where files live
+## 文件存放位置
 
-| Scope                         | Path                                                                                                                      |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Project config                | `./opencode.json`, `./opencode.jsonc`, or `.opencode/opencode.json` (opencode walks up from the cwd to the worktree root) |
-| Global config                 | `~/.config/opencode/opencode.json` (NOT `~/.opencode/`)                                                                   |
-| Project agents                | `.opencode/agent/<name>.md` or `.opencode/agents/<name>.md`                                                               |
-| Global agents                 | `~/.config/opencode/agent(s)/<name>.md`                                                                                   |
-| Project skills                | `.opencode/skill(s)/<name>/SKILL.md`                                                                                      |
-| Global skills                 | `~/.config/opencode/skill(s)/<name>/SKILL.md`                                                                             |
-| External skills (auto-loaded) | `~/.claude/skills/<name>/SKILL.md`, `~/.agents/skills/<name>/SKILL.md`                                                    |
+| 范围                         | 路径                                                                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 项目配置                      | `./opencode.json`, `./opencode.jsonc`, 或 `.opencode/opencode.json`（opencode 从 cwd 向上遍历到工作树根目录）                |
+| 全局配置                      | `~/.config/opencode/opencode.json`（不是 `~/.opencode/`）                                                                     |
+| 项目 agent                    | `.opencode/agent/<name>.md` 或 `.opencode/agents/<name>.md`                                                                   |
+| 全局 agent                    | `~/.config/opencode/agent(s)/<name>.md`                                                                                       |
+| 项目技能                      | `.opencode/skill(s)/<name>/SKILL.md`                                                                                          |
+| 全局技能                      | `~/.config/opencode/skill(s)/<name>/SKILL.md`                                                                                 |
+| 外部技能（自动加载）          | `~/.claude/skills/<name>/SKILL.md`, `~/.agents/skills/<name>/SKILL.md`                                                        |
 
-Configs from each scope are deep-merged. Project overrides global. Unknown
-top-level keys in `opencode.json` are rejected with `ConfigInvalidError`.
+来自各范围的配置会进行深度合并。项目配置覆盖全局配置。`opencode.json` 中未知的顶级键会被拒绝并报 `ConfigInvalidError`。
 
 ## opencode.json
 
-Every field is optional.
+所有字段都是可选的。
 
 ```json
 {
@@ -132,75 +120,71 @@ Every field is optional.
 }
 ```
 
-Shape notes worth being explicit about:
+值得明确指出的事项：
 
-- `model` always carries a provider prefix: `"anthropic/claude-sonnet-4-6"`.
-- `skills` is an object with `paths` and/or `urls`, not an array.
-- `agent` is an object keyed by agent name, not an array.
-- `plugin` is an array of strings or `[name, options]` tuples, not an object.
-- `mcp[name].command` is an array of strings, never a single string. `type` is required.
-- `permission` is either a string action or an object keyed by tool name.
+- `model` 始终带有提供商前缀：`"anthropic/claude-sonnet-4-6"`。
+- `skills` 是一个包含 `paths` 和/或 `urls` 的对象，不是数组。
+- `agent` 是一个以 agent 名称为键的对象，不是数组。
+- `plugin` 是字符串或 `[name, options]` 元组的数组，不是对象。
+- `mcp[name].command` 是字符串数组，绝不是一个单一字符串。`type` 是必需的。
+- `permission` 要么是字符串动作，要么是以工具名称为键的对象。
 
-## Skills
+## 技能
 
-opencode's skill loader scans for `**/SKILL.md` inside skill directories. The
-file is named `SKILL.md` exactly, and lives in its own folder named after the
-skill:
+opencode 的技能加载器会在技能目录内扫描 `**/SKILL.md`。文件必须确切命名为 `SKILL.md`，并位于以技能命名的自己的文件夹中：
 
 ```
 .opencode/skills/my-skill/SKILL.md
 ```
 
-Frontmatter:
+Frontmatter：
 
 ```markdown
 ---
 name: my-skill
-description: One sentence covering what this skill does AND when to trigger it. Front-load the literal keywords or filenames the user is likely to say.
+description: 一句话概括此技能的作用以及何时触发它。将用户可能说的字面关键词或文件名前置。
 ---
 
 # My Skill
 
-(skill body in markdown: instructions, examples, references)
+（技能正文使用 markdown：指令、示例、参考资料）
 ```
 
-- `name` is required, lowercase hyphen-separated, up to 64 chars, and matches the folder name.
-- `description` is effectively required: skills without one are filtered out and never surfaced to the model. Cover both _what_ the skill does and _when_ to use it. Write in third person ("Use when...", not "I help with..."). Front-load concrete trigger keywords and filenames; gate with "Use ONLY when..." if the skill should stay quiet on adjacent topics.
-- Optional: `license`, `compatibility`, `metadata` (string-string map).
+- `name` 是必需的，小写连字符分隔，最多 64 个字符，并与文件夹名称匹配。
+- `description` 实际上是必需的：没有描述的技能会被过滤掉，永远不会暴露给模型。既要覆盖技能的功能（_what_），也要覆盖何时使用（_when_）。以第三人称撰写（"当...时使用"，而不是"我帮助..."）。将具体的触发关键词和文件名前置；如果技能在相邻主题上应保持安静，请使用"仅当...时使用"进行限制。
+- 可选：`license`、`compatibility`、`metadata`（字符串-字符串映射）。
 
-Register skills from non-default locations via `skills.paths` (scanned
-recursively for `**/SKILL.md`) and `skills.urls` (each URL serves a list of
-skills).
+通过 `skills.paths`（递归扫描 `**/SKILL.md`）和 `skills.urls`（每个 URL 提供技能列表）从非默认位置注册技能。
 
 ## Agents
 
-Two ways to define an agent. Use the file form for anything non-trivial.
+有两种定义 agent 的方式。对于非平凡的情况，使用文件形式。
 
-### Inline (in `opencode.json`)
+### 内联（在 `opencode.json` 中）
 
 ```json
 {
   "agent": {
     "my-reviewer": {
-      "description": "Reviews PRs for style violations.",
+      "description": "审查 PR 的样式违规。",
       "mode": "subagent",
       "model": "anthropic/claude-sonnet-4-6",
       "permission": { "edit": "deny", "bash": "ask" },
-      "prompt": "You are a strict PR reviewer..."
+      "prompt": "你是一位严格的 PR 审查者..."
     }
   }
 }
 ```
 
-### File
+### 文件
 
 ```
-.opencode/agent/my-reviewer.md      OR     .opencode/agents/my-reviewer.md
+.opencode/agent/my-reviewer.md      或     .opencode/agents/my-reviewer.md
 ```
 
 ```markdown
 ---
-description: Reviews PRs for style violations.
+description: 审查 PR 的样式违规。
 mode: subagent
 model: anthropic/claude-sonnet-4-6
 permission:
@@ -208,50 +192,41 @@ permission:
   bash: ask
 ---
 
-You are a strict PR reviewer. Focus on...
+你是一位严格的 PR 审查者。专注于...
 ```
 
-The file body becomes the agent's `prompt`. Do not also put `prompt:` in the
-frontmatter.
+文件正文成为 agent 的 `prompt`。不要在 frontmatter 中同时放置 `prompt:`。
 
-`mode` is one of `"primary"`, `"subagent"`, `"all"`.
+`mode` 是 `"primary"`、`"subagent"`、`"all"` 之一。
 
-Allowed top-level frontmatter fields: `name, model, variant, description, mode,
-hidden, color, steps, options, permission, disable, temperature, top_p`. Any
-unknown field is silently routed into `options`.
+允许的顶级 frontmatter 字段：`name, model, variant, description, mode,
+hidden, color, steps, options, permission, disable, temperature, top_p`。任何未知字段会被静默路由到 `options`。
 
-To disable a built-in agent: `agent: { build: { disable: true } }`, or in a
-file, `disable: true` in frontmatter.
+要禁用内置 agent：`agent: { build: { disable: true } }`，或在文件中使用 frontmatter 的 `disable: true`。
 
-`default_agent` must point to a non-hidden, primary-mode agent.
+`default_agent` 必须指向一个非隐藏的、primary-mode 的 agent。
 
-### Built-in agents
+### 内置 agents
 
-opencode ships with `build`, `plan`, `general`, `explore`. Hidden internal agents:
-`compaction`, `title`, `summary`. To override a built-in's fields, define the
-same key in `agent: { <name>: { ... } }`.
+opencode 内置了 `build`、`plan`、`general`、`explore`。隐藏的内部 agents：`compaction`、`title`、`summary`。要覆盖内置字段，在 `agent: { <名称>: { ... } }` 中定义相同的键。
 
-## Plugins
+## 插件
 
-`plugin:` is an array. Each entry is one of:
+`plugin:` 是一个数组。每个条目是以下之一：
 
 ```json
 "plugin": [
-  "opencode-gemini-auth",            // npm spec, latest
-  "opencode-foo@1.2.3",              // npm spec, pinned
-  "./local-plugin.ts",               // file path, relative to the declaring config
-  "file:///abs/path/plugin.js",      // file URL
-  ["opencode-bar", { "key": "val" }] // tuple form with options
+  "opencode-gemini-auth",            // npm 规范，最新版
+  "opencode-foo@1.2.3",              // npm 规范，固定版本
+  "./local-plugin.ts",               // 文件路径，相对于声明配置
+  "file:///abs/path/plugin.js",      // 文件 URL
+  ["opencode-bar", { "key": "val" }] // 带选项的元组形式
 ]
 ```
 
-Auto-discovered plugins (no config entry needed): any `*.ts` or `*.js` file in
-`.opencode/plugin/` or `.opencode/plugins/`.
+自动发现的插件（无需配置条目）：`.opencode/plugin/` 或 `.opencode/plugins/` 中的任何 `*.ts` 或 `*.js` 文件。
 
-A plugin module exports `default` (or any named export) of type
-`Plugin = (input: PluginInput, options?) => Promise<Hooks>`. The export is a
-function, not a plain object literal, and the function returns an object
-(return `{}` if there is nothing to register).
+插件模块导出 `default`（或任何命名导出）类型为 `Plugin = (input: PluginInput, options?) => Promise<Hooks>`。导出是一个函数，而不是普通对象字面量，并且该函数返回一个对象（如果无需注册任何内容，则返回 `{}`）。
 
 ```ts
 import type { Plugin } from "@opencode-ai/plugin"
@@ -259,36 +234,34 @@ import type { Plugin } from "@opencode-ai/plugin"
 export default (async ({ client, project, directory, $ }) => {
   return {
     config: (cfg) => {
-      // cfg is the live merged config; mutate fields here.
+      // cfg 是实时的合并配置；在此处变更字段。
     },
     "tool.execute.before": async (input, output) => {
-      // mutate output.args before the tool runs
+      // 在工具运行前变更 output.args
     },
   }
 }) satisfies Plugin
 ```
 
-Hook surface (mutate `output` in place; return `void`):
+Hook 接口（原地变更 `output`；返回 `void`）：
 
-- `event(input)`: every bus event
-- `config(cfg)`: once on init with the merged config
-- `chat.message`, `chat.params`, `chat.headers`
-- `tool.execute.before`, `tool.execute.after`
+- `event(input)`：每个总线事件
+- `config(cfg)`：初始化时使用合并后的配置调用一次
+- `chat.message`、`chat.params`、`chat.headers`
+- `tool.execute.before`、`tool.execute.after`
 - `tool.definition`
 - `command.execute.before`
 - `shell.env`
 - `permission.ask`
-- `experimental.chat.messages.transform`, `experimental.chat.system.transform`,
-  `experimental.session.compacting`, `experimental.compaction.autocontinue`,
+- `experimental.chat.messages.transform`、`experimental.chat.system.transform`、
+  `experimental.session.compacting`、`experimental.compaction.autocontinue`、
   `experimental.text.complete`
 
-Special object-shaped (not callbacks): `tool: { my_tool: { ... } }`,
-`auth: { ... }`, `provider: { ... }`.
+特殊对象形状（非回调）：`tool: { my_tool: { ... } }`、`auth: { ... }`、`provider: { ... }`。
 
-## MCP servers
+## MCP 服务器
 
-`mcp:` is an object keyed by server name. Each server is discriminated by
-`type`:
+`mcp:` 是一个以服务器名称为键的对象。每个服务器通过 `type` 区分：
 
 ```json
 {
@@ -310,10 +283,9 @@ Special object-shaped (not callbacks): `tool: { my_tool: { ... } }`,
 }
 ```
 
-`command` is an array of strings. `type` is required. Use `enabled: false` to
-disable a server inherited from a parent config.
+`command` 是字符串数组。`type` 是必需的。使用 `enabled: false` 禁用在父配置中继承的服务器。
 
-## Permissions
+## 权限
 
 ```json
 "permission": {
@@ -323,54 +295,37 @@ disable a server inherited from a parent config.
 }
 ```
 
-Actions: `"allow"`, `"ask"`, `"deny"`.
+动作：`"allow"`、`"ask"`、`"deny"`。
 
-Per-tool value forms: `"allow"` shorthand (treated as `{"*": "allow"}`), or an
-object `{ pattern: action }`. Within an object, **insertion order matters**.
-opencode evaluates the LAST matching rule, so put broad rules first and narrow
-rules last.
+每个工具的值形式：`"allow"` 简写（视为 `{"*": "allow"}`），或对象 `{ pattern: action }`。在对象内部，**插入顺序很重要**。opencode 评估**最后**匹配的规则，因此将宽泛规则放在前面，狭窄规则放在后面。
 
-`permission: "allow"` (a string at the top level) is shorthand for "allow
-everything" and is rarely what the user wants.
+`permission: "allow"`（顶层的字符串）是"允许一切"的简写，很少是用户想要的。
 
-Known permission keys: `read, edit, glob, grep, list, bash, task,
+已知的权限键：`read, edit, glob, grep, list, bash, task,
 external_directory, todowrite, question, webfetch, websearch, lsp, doom_loop,
-skill`. Some of these (`todowrite,
-question, webfetch, websearch, doom_loop`) only accept a flat
-action, not a per-pattern object.
+skill`。其中一些（`todowrite`、
+`question`、`webfetch`、`websearch`、`doom_loop`）只接受扁平的动作，不接受按模式的对象。
 
-`external_directory` patterns are filesystem paths (use `~/`, absolute paths,
-or globs like `~/projects/**`).
+`external_directory` 模式是文件系统路径（使用 `~/`、绝对路径或像 `~/projects/**` 这样的 glob）。
 
-Per-agent `permission:` overrides top-level `permission:`. Plan Mode lives on
-the `plan` agent's permission ruleset (`edit: deny *`).
+每个 agent 的 `permission:` 覆盖顶级 `permission:`。计划模式位于 `plan` agent 的权限规则集上（`edit: deny *`）。
 
-## Escape hatches
+## 逃生舱
 
-When a user's config is broken and opencode won't start, these env vars help:
+当用户的配置损坏且 opencode 无法启动时，这些环境变量可以帮助：
 
-- `OPENCODE_DISABLE_PROJECT_CONFIG=1`: skip the project's local `opencode.json`
-  and start from globals only. Run from the project directory, opencode loads,
-  the user edits the broken file, then they restart without the flag.
-- `OPENCODE_CONFIG=/path/to/file.json`: load an additional explicit config.
-- `OPENCODE_CONFIG_CONTENT='{"$schema":"https://opencode.ai/config.json"}'`:
-  inject inline JSON as a final local-scope merge.
-- `OPENCODE_DISABLE_DEFAULT_PLUGINS=1`: skip default plugins.
-- `OPENCODE_PURE=1`: skip external plugins entirely.
-- `OPENCODE_DISABLE_EXTERNAL_SKILLS=1`,
-  `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`: skip the external skill scans under
-  `~/.claude/` and `~/.agents/`.
+- `OPENCODE_DISABLE_PROJECT_CONFIG=1`：跳过项目的本地 `opencode.json`，仅从全局启动。从项目目录运行，opencode 加载，用户编辑损坏的文件，然后不带标志重新启动。
+- `OPENCODE_CONFIG=/path/to/file.json`：加载额外的显式配置。
+- `OPENCODE_CONFIG_CONTENT='{"$schema":"https://opencode.ai/config.json"}'`：注入内联 JSON 作为最终的本地作用域合并。
+- `OPENCODE_DISABLE_DEFAULT_PLUGINS=1`：跳过默认插件。
+- `OPENCODE_PURE=1`：完全跳过外部插件。
+- `OPENCODE_DISABLE_EXTERNAL_SKILLS=1`、
+  `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`：跳过 `~/.claude/` 和 `~/.agents/` 下的外部技能扫描。
 
-## When proposing edits
+## 提出编辑时
 
-- Validate against the schema before writing. If you are unsure of a field's
-  exact shape, or the field is not covered in this skill, fetch
-  `https://opencode.ai/config.json` and read the schema rather than guessing.
-- Preserve `$schema` and any existing fields the user did not ask to change.
-- For agent, skill, and plugin definitions, prefer creating new files in the
-  correct location over inlining everything in `opencode.json`.
-- If the user's existing config is malformed, point them at the env-var escape
-  hatches above so they can edit from inside opencode without breaking their
-  session.
-- After saving any config change, remind the user to quit and restart opencode
-  — running sessions keep using the already-loaded config.
+- 在写入之前根据 schema 验证。如果你不确定某个字段的确切形状，或此技能未涵盖该字段，请获取 `https://opencode.ai/config.json` 并阅读 schema，而不是猜测。
+- 保留 `$schema` 和用户未要求更改的任何现有字段。
+- 对于 agent、技能和插件定义，优先在正确位置创建新文件，而不是将所有内容内联在 `opencode.json` 中。
+- 如果用户现有的配置格式错误，请指向上面的环境变量逃生舱，这样他们可以在 opencode 内部编辑而不会破坏会话。
+- 保存任何配置更改后，提醒用户退出并重启 opencode——正在运行的会话将继续使用已加载的配置。
