@@ -134,17 +134,7 @@ Plain async code should pass explicit context or stay inside an Effect fiber; do
 
 ### Presets
 
-Use `EffectLogger.developmentLayer` (includes stderrSink for Error/Fatal) or `EffectLogger.productionLayer` (no stderrSink). The default `EffectLogger.layer` always includes stderrSink.
-
-### stderrSink
-
-Error/Fatal level logs are automatically written to stderr via `EffectLogger.stderrSink`, regardless of file logging configuration. The sink reads fiber annotations to include service name in output.
-
-Example output with fiber annotations:
-```
-[Error] [session] session not found in database {session=ses_xxx}
-[Fatal] [worker.fetch] request failed {session=ses_xxx, req=abc123}
-```
+Use `EffectLogger.developmentLayer` or `EffectLogger.productionLayer`. Both write to the log file only; stderr is not used (it pollutes TUI rendering).
 
 ### Handle.time()
 

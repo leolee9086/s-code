@@ -57,7 +57,6 @@ function logs() {
   return Logger.layer(
     [
       EffectLogger.logger,
-      EffectLogger.stderrSink,
       OtlpLogger.make({
         url: `${base}/v1/logs`,
         resource: resource(),

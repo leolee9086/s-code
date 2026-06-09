@@ -84,8 +84,8 @@ export const stderrSink = Logger.make((opts) => {
   }
 })
 
-/** Development logger: file logging + stderr sink for errors */
-export const developmentLayer = Logger.layer([logger, stderrSink], { mergeWithExisting: false })
+/** Development logger: file logging only (stderr is not suitable for TUI apps) */
+export const developmentLayer = Logger.layer([logger], { mergeWithExisting: false })
 
 /** Production logger: file logging only (OTLP merged externally) */
 export const productionLayer = Logger.layer([logger], { mergeWithExisting: false })
