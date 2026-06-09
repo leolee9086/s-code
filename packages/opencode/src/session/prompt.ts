@@ -1365,7 +1365,7 @@ export const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
-    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionLegacy.WithParts> = Effect.fn("SessionPrompt.run")(
+    const runLoop = Effect.fn("SessionPrompt.run")(
       function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
         const slog = elog.with({ sessionID })
@@ -1976,7 +1976,7 @@ export const layer = Layer.effect(
           }
         }
 
-        const loopResult = yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+        const loopResult = yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID) as Effect.Effect<SessionLegacy.WithParts>)
 
         // 永续模式：循环退出后启动背景轮询 fiber，等待条件满足后自动重新进入
         if (isForeverMode() && Option.isSome(conditionEngineOption)) {

@@ -36,7 +36,7 @@ import { ProjectV2 } from "@opencode-ai/core/project"
 import { WorkspaceV2 } from "@opencode-ai/core/workspace"
 import { SessionID, MessageID, PartID } from "./schema"
 
-import type { Provider } from "@/provider/provider"
+import { Provider } from "@/provider/provider"
 import { Permission } from "@/permission"
 import { Global } from "@opencode-ai/core/global"
 import { Effect, Layer, Option, Context, Schema, Types } from "effect"
@@ -520,6 +520,12 @@ export interface Interface {
     sessionID: SessionID,
     predicate: (msg: SessionLegacy.WithParts) => boolean,
   ) => Effect.Effect<Option.Option<SessionLegacy.WithParts>, NotFound>
+  /** 获取当前 session 的 context 占用百分比 */
+  readonly contextUsage: (sessionID: SessionID) => Effect.Effect<{
+    usedTokens: number
+    contextLimit: number
+    percentage: number
+  } | null>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Session") {}
@@ -537,7 +543,7 @@ export type Patch = Omit<Partial<Info>, "time" | "share" | "summary" | "revert" 
 export const layer: Layer.Layer<
   Service,
   never,
-  BackgroundJob.Service | RuntimeFlags.Service | Database.Service | EventV2Bridge.Service
+  BackgroundJob.Service | RuntimeFlags.Service | Database.Service | EventV2Bridge.Service | Provider.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -546,6 +552,7 @@ export const layer: Layer.Layer<
     const background = yield* BackgroundJob.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
+    const provider = yield* Provider.Service
 
     const locationForSession = Effect.fnUntraced(function* (sessionID: SessionID) {
       const row = yield* db
@@ -979,6 +986,41 @@ export const layer: Layer.Layer<
       return Option.none<SessionLegacy.WithParts>()
     })
 
+    /**
+     * 获取当前 session 的 context 占用信息
+     * 用于插件判断是否达到编辑工具解锁阈值
+     */
+    const contextUsage: Interface["contextUsage"] = Effect.fn("Session.contextUsage")(function* (sessionID) {
+      // 获取最后一条 assistant 消息以读取 token 用量
+      const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+        Effect.provideService(Database.Service, database),
+      )
+      const last = msgs.findLast((m) => m.info.role === "assistant")
+      if (!last) return null
+      const lastAssistant = last.info
+      if (lastAssistant.role !== "assistant") return null
+      if (!lastAssistant.tokens) return null
+
+      const tokens = lastAssistant.tokens
+      const total = tokens.total ?? tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+
+      // 获取 model 的 context 限制
+      const model = yield* provider.getModel(
+        lastAssistant.providerID,
+        lastAssistant.modelID,
+      ).pipe(Effect.option)
+      if (Option.isNone(model)) return null
+
+      const contextLimit = model.value.limit.context
+      if (contextLimit === 0) return null
+
+      return {
+        usedTokens: total,
+        contextLimit,
+        percentage: total / contextLimit,
+      }
+    })
+
     return Service.of({
       list,
       listGlobal,
@@ -1006,16 +1048,20 @@ export const layer: Layer.Layer<
       getPart,
       updatePartDelta,
       findMessage,
+      contextUsage,
     })
   }),
 )
 
-export const defaultLayer = layer.pipe(
-  Layer.provide(BackgroundJob.defaultLayer),
-  Layer.provide(Database.defaultLayer),
-  Layer.provide(EventV2Bridge.defaultLayer),
-  Layer.provide(SessionV2.defaultLayer),
-  Layer.provide(RuntimeFlags.defaultLayer),
+export const defaultLayer = Layer.suspend(() =>
+  layer.pipe(
+    Layer.provide(BackgroundJob.defaultLayer),
+    Layer.provide(Database.defaultLayer),
+    Layer.provide(EventV2Bridge.defaultLayer),
+    Layer.provide(SessionV2.defaultLayer),
+    Layer.provide(RuntimeFlags.defaultLayer),
+    Layer.provide(Provider.defaultLayer),
+  ),
 )
 
 const cancelBackgroundJobs = Effect.fn("Session.cancelBackgroundJobs")(function* (

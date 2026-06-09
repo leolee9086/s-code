@@ -299,6 +299,21 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  auto_plan: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description: "Enable auto-plan mode: block edit tools until context exceeds threshold (default: false)",
+      }),
+      context_threshold: Schema.optional(Schema.Number).annotate({
+        description: "Context usage threshold (0-1) above which edit tools are unblocked (default: 0.3)",
+      }),
+      blocked_tools: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
+        description: "List of tool IDs to block when below threshold (default: [\"edit\", \"write\", \"apply_patch\", \"shell\"])",
+      }),
+    }),
+  ).annotate({
+    description: "Auto-plan mode: force plan-only mode until context usage exceeds a threshold",
+  }),
   experimental: Schema.optional(
     Schema.Struct({
       disable_paste_summary: Schema.optional(Schema.Boolean),

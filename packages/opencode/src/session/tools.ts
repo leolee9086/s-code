@@ -12,10 +12,10 @@ import { Truncate } from "@/tool/truncate"
 import { isEvolveMode } from "@/evolve/file-protocol"
 
 import { Plugin } from "@/plugin"
+import { Config } from "@/config/config"
 import type { TaskPromptOps } from "@/tool/task"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
 import { Effect } from "effect"
-import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { PartID } from "./schema"
@@ -36,12 +36,22 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 }) {
   using _ = log.time("resolveTools")
   const tools: Record<string, AITool> = {}
+  const sessionSvc = yield* Session.Service
   const run = yield* EffectBridge.make()
   const plugin = yield* Plugin.Service
   const permission = yield* Permission.Service
   const registry = yield* ToolRegistry.Service
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
+  const config = yield* Config.Service
+
+  const fullCfg = yield* config.get()
+  const autoPlanCfg = fullCfg.auto_plan
+  const autoPlanEnabled = autoPlanCfg?.enabled ?? false
+  const autoPlanThreshold = autoPlanCfg?.context_threshold ?? 0.3
+  const blockedEditTools = new Set(
+    autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "shell"],
+  )
 
   const channel = getDatabaseChannel()
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
@@ -99,11 +109,40 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 metadata: {},
               }
             }
-            yield* plugin.trigger(
+            // auto-plan 模式：context 占用低于阈值时阻断编辑工具
+            if (autoPlanEnabled && blockedEditTools.has(item.id)) {
+              const usage = yield* sessionSvc.contextUsage(ctx.sessionID)
+              if (usage && usage.percentage <= autoPlanThreshold) {
+                return {
+                  title: "Tool blocked (auto-plan)",
+                  output: [
+                    `[Blocked by auto-plan]`,
+                    `Context usage is ${(usage.percentage * 100).toFixed(1)}%, below the ${(autoPlanThreshold * 100).toFixed(0)}% threshold.`,
+                    `You are in plan mode: gather information and build a plan first.`,
+                    `Only read-only tools (read, grep, glob, question) are available until`,
+                    `context usage exceeds ${(autoPlanThreshold * 100).toFixed(0)}%.`,
+                  ].join("\n"),
+                  metadata: { intercepted: { rule: "auto_plan", reason: "Context threshold not met" } },
+                }
+              }
+            }
+            const beforeOutput = yield* plugin.trigger(
               "tool.execute.before",
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
-              { args },
+              { args, allowed: true, blockReason: "" },
             )
+            if (beforeOutput.allowed === false) {
+              return {
+                title: "Tool blocked",
+                output: beforeOutput.blockReason ?? "This tool is currently blocked by policy.",
+                metadata: {
+                  intercepted: {
+                    rule: "plugin_blocked",
+                    reason: beforeOutput.blockReason ?? "Blocked",
+                  },
+                },
+              }
+            }
             const result = yield* item.execute(args, ctx)
             const output = {
               ...result,
@@ -140,11 +179,40 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
-          yield* plugin.trigger(
+          // auto-plan 模式：context 占用低于阈值时阻断编辑工具
+          if (autoPlanEnabled && blockedEditTools.has(key)) {
+            const usage = yield* sessionSvc.contextUsage(ctx.sessionID)
+            if (usage && usage.percentage <= autoPlanThreshold) {
+              return {
+                title: "Tool blocked (auto-plan)",
+                output: [
+                  `[Blocked by auto-plan]`,
+                  `Context usage is ${(usage.percentage * 100).toFixed(1)}%, below the ${(autoPlanThreshold * 100).toFixed(0)}% threshold.`,
+                  `You are in plan mode: gather information and build a plan first.`,
+                  `Only read-only tools (read, grep, glob, question) are available until`,
+                  `context usage exceeds ${(autoPlanThreshold * 100).toFixed(0)}%.`,
+                ].join("\n"),
+                metadata: { intercepted: { rule: "auto_plan", reason: "Context threshold not met" } },
+              }
+            }
+          }
+          const mcpBeforeOutput = yield* plugin.trigger(
             "tool.execute.before",
             { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
-            { args },
+            { args, allowed: true, blockReason: "" },
           )
+          if (mcpBeforeOutput.allowed === false) {
+            return {
+              title: "Tool blocked",
+              output: mcpBeforeOutput.blockReason ?? "This tool is currently blocked by policy.",
+              metadata: {
+                intercepted: {
+                  rule: "plugin_blocked",
+                  reason: mcpBeforeOutput.blockReason ?? "Blocked",
+                },
+              },
+            }
+          }
           const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
             yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
             return yield* Effect.promise(() => execute(args, opts))

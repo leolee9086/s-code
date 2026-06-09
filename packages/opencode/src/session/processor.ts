@@ -345,6 +345,14 @@ export const layer = Layer.effect(
             if (value.providerMetadata && value.id in ctx.reasoningMap) {
               ctx.reasoningMap[value.id].metadata = value.providerMetadata
             }
+            if (!ctx.assistantMessage.summary && value.id in ctx.reasoningMap) {
+              const cfg = yield* config.get()
+              const filterCfg = cfg.content_filter
+              const reasoningText = ctx.reasoningMap[value.id].text.trim()
+              if (filterCfg && reasoningText) {
+                yield* ContentFilter.check(reasoningText, filterCfg, ctx.sessionID)
+              }
+            }
             yield* finishReasoning(value.id)
             return
 

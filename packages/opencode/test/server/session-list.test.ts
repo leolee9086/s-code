@@ -14,6 +14,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { Storage } from "@/storage/storage"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { BackgroundJob } from "@/background/job"
+import { Provider, ModelNotFoundError } from "@/provider/provider"
 
 void Log.init({ print: false })
 const it = testEffect(
@@ -27,6 +28,11 @@ const it = testEffect(
       Layer.provide(SessionProjector.defaultLayer),
       Layer.provide(RuntimeFlags.layer({ experimentalWorkspaces: false })),
       Layer.provide(BackgroundJob.defaultLayer),
+      Layer.provide(
+        Layer.mock(Provider.Service, {
+          getModel: () => Effect.fail(new ModelNotFoundError({ modelID: "test" as any, providerID: "test" as any })),
+        }),
+      ),
     ),
   ),
 )

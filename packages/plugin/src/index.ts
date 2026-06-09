@@ -265,7 +265,13 @@ export interface Hooks {
   ) => Promise<void>
   "tool.execute.before"?: (
     input: { tool: string; sessionID: string; callID: string },
-    output: { args: any },
+    output: {
+      args: any
+      /** 是否允许工具继续执行，默认 true */
+      allowed?: boolean
+      /** 阻断原因，LLM 会看到此消息 */
+      blockReason?: string
+    },
   ) => Promise<void>
   "shell.env"?: (
     input: { cwd: string; sessionID?: string; callID?: string },
