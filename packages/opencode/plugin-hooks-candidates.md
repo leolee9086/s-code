@@ -341,7 +341,66 @@
 
 ---
 
-## 13. 其他未覆盖模块
+## 14. Run-Time 展示层
+
+### 14.1 工具显示规则 (tool display hooks)
+
+**位置**: `cli/cmd/run/tool.ts`
+
+**当前行为**: 代码注释提到每个工具都有 5 个"display hooks"（`view`、`run`、`scroll`、`permission`、`snap`），但这是内部 ToolRule 模式的函数回调，而非公开的 plugin hook。插件无法自定义工具结果在 TUI/run 输出中的渲染方式。
+
+**潜在 hook**: `"tool.display.rule"`
+- input: `{ toolID, context: "scrollback" | "run" | "permission" }`
+- output: `{ icon?, title?, format?, snapshot?: { type, data } }` → 插件可自定义工具展示
+
+---
+
+## 15. V2 插件系统 (`packages/core/src/plugin.ts`)
+
+> `packages/core/src/plugin.ts` 实现了一套 **V2 Plugin 系统**（`PluginV2`），与 `packages/opencode/src/plugin/index.ts` 的 V1 系统独立。
+> V2 使用 `HookSpec` 定义 hook 签名，插件通过 `define()` 注册，通过 `plugin.trigger()` 调用。
+
+### 15.1 现有 V2 Hooks（4 个）
+
+| Hook | 位置 | 用途 |
+|------|------|------|
+| `catalog.transform` | `core/src/catalog.ts:193` | 修改 provider/model 目录 |
+| `account.switched` | `core/src/plugin/account.ts:17` | 账户切换通知 |
+| `aisdk.sdk` | `core/src/aisdk.ts:152` | 创建 AI SDK 实例 |
+| `aisdk.language` | `core/src/aisdk.ts:161` | 创建 AI SDK language model |
+
+### 15.2 V2 缺失的 Hook 机会
+
+V2 系统只有基础设施 hooks，缺乏业务层 hooks：
+
+**潜在 V2 Hook: `"session.created"` / `"session.resumed"`**
+- V2 没有任何 session 层面的事件 hook
+- 输入: `{ sessionID, location }`
+- 输出: `{}` → 插件可初始化 session 级状态
+
+**潜在 V2 Hook: `"permission.evaluated"`**
+- 输入: `{ permission, resource, effect }`
+- 输出: `{ overrideEffect?: "allow" | "deny" | "ask" }`
+- 插件可覆盖权限决策
+
+### 15.3 双系统关系
+
+V1（`packages/opencode/src/plugin/`）和 V2（`packages/core/src/plugin.ts`）是两套独立的 plugin 系统：
+- **V1**: `@opencode-ai/plugin` 的 `Hooks` 接口，通过 `Plugin.Service` 和 `plugin.trigger()` 调用
+- **V2**: `@opencode-ai/core` 的 `PluginV2`，通过 `PluginV2.Service` 和 `plugin.trigger()` 调用
+- 两者没有互通，hook 定义不共享
+- V1 有 23 个 hook 签名，V2 只有 4 个
+
+### 15.4 V2 代码中标注 TODO 的 Hook 需求
+
+| TODO 位置 | 内容 | 需要的 Hook |
+|-----------|------|-------------|
+| `core/src/tool/bash.ts:90` | `Add plugin shell.env environment augmentation once V2 plugin hooks exist` | `shell.env` — V1 已有但 V2 缺 |
+| `core/src/tool/bash.ts:91` | `Add durable/live progress metadata streaming for long-running commands once V2 tool invocation progress context is wired` | `tool.progress` — 长时间运行命令进度流 |
+
+---
+
+## 16. 其他未覆盖模块
 
 以下模块已接入 `Plugin.Service` 但没有任何 `trigger()` 调用，可能存在 hook 机会：
 - **`evolve/`** — 进化模式进入/退出事件
@@ -352,6 +411,8 @@
 ---
 
 ## 现有 Hook 覆盖度总结
+
+### V1 系统 (`packages/opencode/src/plugin/`)
 
 | 模块 | 已有 Hooks | 缺失关键点 |
 |------|-----------|-----------|
@@ -371,6 +432,17 @@
 | evolve/ | 无 | 模式进入/退出 |
 | background/job.ts | 无 | 任务生命周期 |
 
+### V2 系统 (`packages/core/src/plugin.ts`)
+
+| Hook | 位置 | 类型 |
+|------|------|------|
+| `catalog.transform` | core/src/catalog.ts:193 | 基础设施 ✅ |
+| `account.switched` | core/src/plugin/account.ts:17 | 基础设施 ✅ |
+| `aisdk.sdk` | core/src/aisdk.ts:152 | 基础设施 ✅ |
+| `aisdk.language` | core/src/aisdk.ts:161 | 基础设施 ✅ |
+| `shell.env` (标注 TODO) | core/src/tool/bash.ts:90 | **缺失** |
+| `tool.progress` (标注 TODO) | core/src/tool/bash.ts:91 | **缺失** |
+
 ---
 
 ## 优先级建议
@@ -389,4 +461,35 @@
 7. **`shell.execute.error`** — 超时/中断
 8. **`session.compaction.create`** — compaction 创建时
 9. **`session.created`/`session.deleted`** — session 生命周期
-10. **`provider.model.notfound`** — 模型解析失败
+10. **`provider.model.notfound`** — provider.ts, 模型解析失败
+11. **`cli.command.before`/`cli.command.after`** — CLI 命令扩展
+12. **`server.request.before`/`server.request.after`** — HTTP API 扩展
+13. **V2: `shell.env`** — core/src/tool/bash.ts:90 (标注 TODO)
+14. **V2: `tool.progress`** — core/src/tool/bash.ts:91 (标注 TODO)
+15. **V2: `session.created`** — V2 缺失 session 生命周期 hook
+
+---
+
+## 附录：零插件集成的包
+
+以下 packages 完全没有任何 plugin/hook 引用（无 `Plugin.Service`、无 `trigger()`、无 `Hooks`）：
+
+| 包 | 说明 |
+|----|------|
+| `packages/desktop/` | Electron 桌面应用 |
+| `packages/app/` | 应用层 |
+| `packages/sdk/` | 客户端 SDK |
+| `packages/tui/` | TUI 框架组件 |
+| `packages/cli/` | CLI 脚手架 |
+| `packages/console/` | 管理控制台 |
+| `packages/llm/` | LLM 协议层 |
+| `packages/server/` | 后端服务 |
+| `packages/ui/` | UI 组件库 |
+| `packages/web/` | Web 应用 |
+| `packages/slack/` | Slack 集成 |
+| `packages/identity/` | 身份认证 |
+| `packages/enterprise/` | 企业功能 |
+| `packages/stats/` | 统计 |
+| `packages/function/` | 函数平台 |
+
+这些包如果要接入插件系统，需要在 `packages/plugin/src/index.ts` 的 `Hooks` 接口中添加相应的 hook 签名，然后在对应包中调用 `plugin.trigger()`。
