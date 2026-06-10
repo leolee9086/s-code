@@ -1,6 +1,6 @@
-import { PermissionLegacy } from "@opencode-ai/core/permission/legacy"
+import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { EOL } from "os"
-import { SessionLegacy } from "@opencode-ai/core/session/legacy"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { basename } from "path"
 import { Cause, Effect } from "effect"
 import { Agent } from "../../../agent/agent"
@@ -166,7 +166,7 @@ const createToolContext = Effect.fn("Cli.debug.agent.createToolContext")(functio
         )
       })
   const now = Date.now()
-  const message: SessionLegacy.Assistant = {
+  const message: SessionV1.Assistant = {
     id: messageID,
     sessionID: session.id,
     role: "assistant",
@@ -196,15 +196,17 @@ const createToolContext = Effect.fn("Cli.debug.agent.createToolContext")(functio
     abort: new AbortController().signal,
     messages: [],
     metadata: () => Effect.void,
-    ask(req: Omit<PermissionLegacy.Request, "id" | "sessionID" | "tool">) {
+    ask(req: Omit<PermissionV1.Request, "id" | "sessionID" | "tool">) {
       return Effect.sync(() => {
         for (const pattern of req.patterns) {
           const rule = Permission.evaluate(req.permission, pattern, ruleset)
           if (rule.action === "deny") {
-            throw new PermissionLegacy.DeniedError({ ruleset })
+            throw new PermissionV1.DeniedError({ ruleset })
           }
         }
       })
     },
   }
 })
+
+export * as AgentDebug from "./agent"

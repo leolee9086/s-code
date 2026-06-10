@@ -1,6 +1,6 @@
-import { PermissionLegacy } from "@opencode-ai/core/permission/legacy"
+import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Provider } from "@/provider/provider"
-import { SessionLegacy } from "@opencode-ai/core/session/legacy"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { Log } from "@opencode-ai/core/util/log"
 import { Context, Effect, Layer } from "effect"
@@ -28,17 +28,18 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { LLMDiagnostic } from "./llm/diagnostic"
 
 const log = Log.create({ service: "llm" })
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
 export type StreamInput = {
-  user: SessionLegacy.User
+  user: SessionV1.User
   sessionID: string
   parentSessionID?: string
   model: Provider.Model
   agent: Agent.Info
-  permission?: PermissionLegacy.Ruleset
+  permission?: PermissionV1.Ruleset
   system: string[]
   messages: ModelMessage[]
   small?: boolean
@@ -116,6 +117,9 @@ const live: Layer.Layer<
         isWorkflow,
       })
 
+      // 诊断：比较连续两次请求的序列差异，暴露前缀注入等特性对 LLM 缓存的潜在破坏
+      yield* Effect.sync(() => LLMDiagnostic.diagnosePayloadDiff(input.sessionID, prepared))
+
       // Wire up toolExecutor for DWS workflow models so that tool calls
       // from the workflow service are executed via opencode's tool system
       // and results sent back over the WebSocket.
@@ -165,7 +169,7 @@ const live: Layer.Layer<
             return { approved: true }
           }
 
-          const id = PermissionLegacy.ID.ascending()
+          const id = PermissionV1.ID.ascending()
           let unsub: EventV2.Unsubscribe | undefined
           try {
             unsub = await bridge.promise(

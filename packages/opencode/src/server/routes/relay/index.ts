@@ -4,7 +4,7 @@
 
 import { Effect, Layer, Schema } from "effect"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { ForeverRelay } from "@/forever/relay"
 import { Injection } from "@/session/injection"
 import { type SessionID } from "@/session/schema"
@@ -87,5 +87,5 @@ export const relayRoutes = HttpRouter.use((router) =>
     )
   }),
 ).pipe(
-  Layer.provide([ForeverRelay.relayLayer, Injection.defaultLayer, AppFileSystem.defaultLayer]),
+  Layer.provide([ForeverRelay.relayLayer, Injection.defaultLayer, FSUtil.defaultLayer]),
 )

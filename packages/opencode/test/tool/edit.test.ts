@@ -5,7 +5,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { EditTool } from "../../src/tool/edit"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { LSP } from "@/lsp/lsp"
-import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
@@ -13,7 +13,7 @@ import { Truncate } from "@/tool/truncate"
 import { SessionID, MessageID } from "../../src/session/schema"
 import * as Tool from "../../src/tool/tool"
 import { testEffect } from "../lib/effect"
-import { FileWatcher } from "../../src/file/watcher"
+import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 
 const ctx = {
   sessionID: SessionID.make("ses_test-edit-session"),
@@ -32,7 +32,7 @@ afterEach(async () => {
 
 const layer = Layer.mergeAll(
   LSP.defaultLayer,
-  AppFileSystem.defaultLayer,
+  FSUtil.defaultLayer,
   Format.defaultLayer,
   EventV2Bridge.defaultLayer,
   Truncate.defaultLayer,
@@ -64,12 +64,12 @@ const fail = Effect.fn("EditToolTest.fail")(function* (args: Tool.InferParameter
 })
 
 const put = Effect.fn("EditToolTest.put")(function* (p: string, content: string) {
-  const fs = yield* AppFileSystem.Service
+  const fs = yield* FSUtil.Service
   yield* fs.writeWithDirs(p, content)
 })
 
 const load = Effect.fn("EditToolTest.load")(function* (p: string) {
-  const fs = yield* AppFileSystem.Service
+  const fs = yield* FSUtil.Service
   return yield* fs.readFileString(p)
 })
 
@@ -78,12 +78,12 @@ const loadRaw = Effect.fn("EditToolTest.loadRaw")(function* (p: string) {
 })
 
 const makeDirectory = Effect.fn("EditToolTest.makeDirectory")(function* (p: string) {
-  const fs = yield* AppFileSystem.Service
+  const fs = yield* FSUtil.Service
   yield* fs.makeDirectory(p)
 })
 
 const getMtime = Effect.fn("EditToolTest.getMtime")(function* (p: string) {
-  const fs = yield* AppFileSystem.Service
+  const fs = yield* FSUtil.Service
   const info = yield* fs.stat(p)
   return Number(info.mtime)
 })
@@ -91,7 +91,7 @@ const getMtime = Effect.fn("EditToolTest.getMtime")(function* (p: string) {
 const autoRun = Effect.fn("EditToolTest.autoRun")(function* (
   args: { filePath: string; oldString: string; newString: string; replaceAll?: boolean },
 ) {
-  const fs = yield* AppFileSystem.Service
+  const fs = yield* FSUtil.Service
   const info = yield* fs.stat(args.filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
   if (!info) return yield* run({ ...args, mtime: 0, proof: "" })
   const content = yield* load(args.filePath)
@@ -103,7 +103,7 @@ const autoRun = Effect.fn("EditToolTest.autoRun")(function* (
   return yield* run({ mtime: Number(info.mtime), proof, ...args })
 })
 
-const onceBus = Effect.fn("EditToolTest.onceBus")(function* (def: typeof FileWatcher.Event.Updated) {
+const onceBus = Effect.fn("EditToolTest.onceBus")(function* (def: typeof Watcher.Event.Updated) {
   const events = yield* EventV2Bridge.Service
   const deferred = yield* Deferred.make<void>()
   const unsub = yield* events.listen((event) => {
@@ -127,12 +127,13 @@ describe("tool.edit", () => {
       }),
     )
 
-    it.instance("preserves BOM when oldString is empty on existing files", () =>
+    it.instance("rejects empty oldString on existing files and leaves content unchanged", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
         const filepath = path.join(test.directory, "existing.cs")
         const bom = String.fromCharCode(0xfeff)
-        yield* put(filepath, `${bom}using System;\n`)
+        const original = `${bom}using System;\n`
+        yield* put(filepath, original)
 
         const result = yield* run({ filePath: filepath, oldString: "", newString: "using Up;\n", mtime: 0, proof: "" })
 
@@ -140,8 +141,7 @@ describe("tool.edit", () => {
         expect(result.metadata.diff).toContain("+using Up;")
 
         const content = yield* loadRaw(filepath)
-        expect(content.charCodeAt(0)).toBe(0xfeff)
-        expect(content.slice(1)).toBe("using Up;\n")
+        expect(content).toBe(original)
       }),
     )
 
@@ -159,7 +159,7 @@ describe("tool.edit", () => {
     it.instance("emits add event for new files", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
-        const updated = yield* onceBus(FileWatcher.Event.Updated)
+        const updated = yield* onceBus(Watcher.Event.Updated)
 
         yield* run({ filePath: path.join(test.directory, "new.txt"), oldString: "", newString: "content", mtime: 0, proof: "" })
         yield* Deferred.await(updated)
@@ -234,6 +234,49 @@ describe("tool.edit", () => {
       }),
     )
 
+    it.instance("rejects loose block-anchor matches and leaves content unchanged", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "file.ts")
+        const original = [
+          "function configure() {",
+          "  keepImportantState()",
+          "  removeAllUserData()",
+          "  archiveBackups()",
+          "  auditLog()",
+          "}",
+        ].join("\n")
+        yield* put(filepath, original)
+
+        expect(
+          (yield* fail({
+            filePath: filepath,
+            oldString: ["function configure() {", "  const enabled = true", "}"].join("\n"),
+            newString: ["function configure() {", "  const enabled = false", "}"].join("\n"),
+          })).message,
+        ).toContain("Could not find oldString")
+        expect(yield* load(filepath)).toBe(original)
+      }),
+    )
+
+    it.instance("rejects block-anchor matches with unrelated middle content", () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const filepath = path.join(test.directory, "file.ts")
+        const original = ["function configure() {", "  removeAllUserData()", "}"].join("\n")
+        yield* put(filepath, original)
+
+        expect(
+          (yield* fail({
+            filePath: filepath,
+            oldString: ["function configure() {", "  const enabled = true", "}"].join("\n"),
+            newString: ["function configure() {", "  const enabled = false", "}"].join("\n"),
+          })).message,
+        ).toContain("Could not find oldString")
+        expect(yield* load(filepath)).toBe(original)
+      }),
+    )
+
     it.instance("replaces all occurrences with replaceAll option", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
@@ -251,7 +294,7 @@ describe("tool.edit", () => {
         const test = yield* TestInstance
         const filepath = path.join(test.directory, "file.txt")
         yield* put(filepath, "original")
-        const updated = yield* onceBus(FileWatcher.Event.Updated)
+        const updated = yield* onceBus(Watcher.Event.Updated)
 
         yield* autoRun({ filePath: filepath, oldString: "original", newString: "modified" })
         yield* Deferred.await(updated)
