@@ -107,6 +107,7 @@ export const layer = Layer.effect(
 
         const defaults = Permission.fromConfig({
           "*": "allow",
+          bash: "deny",
           doom_loop: "ask",
           external_directory: {
             "*": "ask",
@@ -188,7 +189,6 @@ export const layer = Layer.effect(
                 grep: "allow",
                 glob: "allow",
                 list: "allow",
-                bash: "allow",
                 webfetch: "allow",
                 websearch: "allow",
                 read: "allow",
