@@ -10,6 +10,7 @@ export type AtOption =
 export interface SlashCommand {
   id: string
   trigger: string
+  searchText: string // trigger + 中文别名，用于模糊搜索
   title: string
   description?: string
   keybind?: string

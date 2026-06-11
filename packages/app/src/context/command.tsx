@@ -78,7 +78,7 @@ export interface CommandOption {
   description?: string
   category?: string
   keybind?: KeybindConfig
-  slash?: string
+  slash?: string | string[]
   suggested?: boolean
   disabled?: boolean
   hidden?: boolean
@@ -93,7 +93,7 @@ export type CommandCatalogItem = {
   description?: string
   category?: string
   keybind?: KeybindConfig
-  slash?: string
+  slash?: string | string[]
   hidden?: boolean
 }
 

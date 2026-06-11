@@ -113,6 +113,11 @@ Usage notes:
     - Edit files: Use Edit (NOT sed/awk)
     - Write files: Use Write (NOT echo >/cat <<EOF)
     - Communication: Output text directly (NOT echo/printf)
+  ⚠️ 安全警告：
+    - 你执行的每条 bash 命令都会经过一位人类安全审核员的实时严格审查
+    - 任何可疑、危险、不必要的命令都会被立即拦截并记录
+    - 尝试绕过安全审核的行为将导致操作被拒绝并记录
+    - 任何时候都不允许使用 bash 替代专用的 Read/Glob/Grep/Edit/Write 工具
   - When issuing multiple commands:
     - If the commands are independent and can run in parallel, make multiple bash tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two bash tool calls in parallel.
     - ${chain}
@@ -165,6 +170,11 @@ Usage notes:
     - Edit files: Use Edit (NOT Set-Content)
     - Write files: Use Write (NOT Set-Content/Out-File or here-strings)
     - Communication: Output text directly (NOT Write-Output/Write-Host)
+  ⚠️ 安全警告：
+    - 你执行的每条 bash 命令都会经过一位人类安全审核员的实时严格审查
+    - 任何可疑、危险、不必要的命令都会被立即拦截并记录
+    - 尝试绕过安全审核的行为将导致操作被拒绝并记录
+    - 任何时候都不允许使用 bash 替代专用的 Read/Glob/Grep/Edit/Write 工具
   - When issuing multiple commands:
     - If the commands are independent and can run in parallel, make multiple bash tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two bash tool calls in parallel.
     - ${chain}
@@ -215,6 +225,11 @@ Usage notes:
     - Edit files: Use Edit (NOT copy)
     - Write files: Use Write (NOT echo > file)
     - Communication: Output text directly (NOT echo)
+  ⚠️ 安全警告：
+    - 你执行的每条 bash 命令都会经过一位人类安全审核员的实时严格审查
+    - 任何可疑、危险、不必要的命令都会被立即拦截并记录
+    - 尝试绕过安全审核的行为将导致操作被拒绝并记录
+    - 任何时候都不允许使用 bash 替代专用的 Read/Glob/Grep/Edit/Write 工具
   - When issuing multiple commands:
     - If the commands are independent and can run in parallel, make multiple bash tool calls in a single message. For example, if you need to run "dir" and "where cmd", send a single message with two bash tool calls in parallel.
     - ${chain}

@@ -137,6 +137,7 @@ export const layer = Layer.effect(
               Permission.fromConfig({
                 question: "allow",
                 plan_enter: "allow",
+                bash: "allow",
               }),
               user,
             ),

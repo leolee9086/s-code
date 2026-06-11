@@ -1642,11 +1642,15 @@ export const layer = Layer.effect(
             // 使子 task 无限循环无法结束。
             const autoPlanCfg = (yield* config.get()).auto_plan
             const autoPlanEnabled = autoPlanCfg?.enabled ?? true
+            let autoPlanContextSufficient = false
             if (autoPlanEnabled && !session.parentID) {
               const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"]
               const threshold = autoPlanCfg?.context_threshold ?? 0.3
               const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
-              if (Option.isSome(usage) && usage.value) {
+              if (Option.isSome(usage) && usage.value && usage.value.percentage >= threshold) {
+                // 上下文占用已超过阈值，不注入 auto_plan，process 后退出循环
+                autoPlanContextSufficient = true
+              } else if (Option.isSome(usage) && usage.value) {
                 const u = usage.value
                 const autoPlanText = [
                   `<auto-plan>`,
@@ -1823,6 +1827,14 @@ export const layer = Layer.effect(
               return "continue" as const
             }
             if (result === "stop") return "break" as const
+            // 上下文充足后退出循环：
+            //   - auto_plan 已启用且 context >= threshold → 无需再注入，退出
+            //   - auto_plan 已禁用 → 无合成消息阻塞退出条件，直接退出
+            // 上下文不足时保持循环，auto_plan 会继续注入驱动模型收集信息。
+            if (!isForeverMode() && !isEvolveMode()) {
+              const assistantFinished = handle.message.finish && !["tool-calls", "unknown"].includes(handle.message.finish)
+              if (assistantFinished && (autoPlanContextSufficient || !autoPlanEnabled)) return "break" as const
+            }
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,

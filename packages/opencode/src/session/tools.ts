@@ -18,6 +18,8 @@ import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSch
 import { Effect } from "effect"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
+import { InstanceState } from "@/effect/instance-state"
+import { bashReview } from "./bash-review"
 import { PartID } from "./schema"
 import * as EffectLogger from "@opencode-ai/core/effect/logger"
 import { EffectBridge } from "@/effect/bridge"
@@ -145,6 +147,29 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 },
               }
             }
+
+            // ★ Bash 安全审核：权限自动放行时启动语义审核
+            if (item.id === "bash") {
+              const mergedRules = Permission.merge(
+                input.agent.permission,
+                input.session.permission ?? [],
+              )
+              const bashRule = Permission.evaluate("bash", "*", mergedRules)
+              const bashReviewEnabled = fullCfg.experimental?.bash_review ?? true
+
+              if (bashRule.action === "allow" && bashReviewEnabled) {
+                const instanceCtx = yield* InstanceState.context
+                const reviewResult = yield* Effect.catch(
+                  bashReview(args, ctx, input, sessionSvc, instanceCtx),
+                  (_) => {
+                    log.warn("bash review failed, allowing command")
+                    return Effect.succeed(undefined)
+                  },
+                )
+                if (reviewResult) return reviewResult
+              }
+            }
+
             const result = yield* item.execute(args, ctx)
             const output = {
               ...result,
