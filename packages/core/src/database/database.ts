@@ -32,9 +32,9 @@ export const layer = Layer.effect(
     yield* DatabaseMigration.apply(db)
 
     {
-      const schemaCheck = process.env.OPENCODE_SKIP_SCHEMA_CHECK === "1"
-        ? { compatible: true as const }
-        : yield* DatabaseMigration.checkSchemaVersion(db, DatabaseMigration.migrations)
+      const schemaCheck = process.env.OPENCODE_ENABLE_SCHEMA_CHECK === "1"
+        ? yield* DatabaseMigration.checkSchemaVersion(db, DatabaseMigration.migrations)
+        : { compatible: true as const }
       if (!schemaCheck.compatible) {
         yield* Effect.die(new Error(schemaCheck.message))
       }

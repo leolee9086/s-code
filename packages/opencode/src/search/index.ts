@@ -27,6 +27,7 @@ import * as Cache from "./cache"
 import * as PersistentCacheModule from "./persistent-cache"
 import * as QueryIntentModule from "./query-intent"
 import * as PriceCompareModule from "./price-compare"
+import * as RateLimiterModule from "./rate-limiter"
 
-export { Aggregator, Executor, Selector, Engine, Cache, PersistentCacheModule as PersistentCache, QueryIntentModule as QueryIntent, PriceCompareModule as PriceCompare }
+export { Aggregator, Executor, Selector, Engine, Cache, PersistentCacheModule as PersistentCache, QueryIntentModule as QueryIntent, PriceCompareModule as PriceCompare, RateLimiterModule as RateLimiter }
 export * as Search from "."

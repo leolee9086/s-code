@@ -1,6 +1,8 @@
 - 多引擎元搜索：同时搜索 100+ 个引擎（DuckDuckGo、Bing、Brave、Google、Yandex、百度、搜狗、360、Bilibili、Wikipedia、GitHub、Reddit、YouTube、Spotify 等），自动去重、评分、排序，提供最全面的结果
 - 集成 SearXNG 风格的元搜索引擎架构：并发执行 → 结果聚合（URL 去重 + 标题模糊合并）→ 加权评分（含时效性衰减）→ 域名多样性保证
 - 引擎熔断器：采用指数退避算法（1分钟/5分钟/15分钟），限流（429）自动等待 Retry-After，CAPTCHA/封禁自动暂停 30 分钟
+- 引擎级速率限制器：每个引擎独立追踪最近调用时间，最小请求间隔动态调整（Google/百度较保守，Brave/DuckDuckGo 较宽松），避免触发反爬机制
+- User-Agent 轮换：每次请求从真实浏览器 UA 池中随机选择，降低爬虫检测风险
 - 内置 DuckDuckGo + Bing + Brave 搜索无需任何 API key 或配置，开箱即用
 - 同时支持配置 API key 后的 Exa 和 Parallel 搜索服务
 - 支持时间范围过滤（day/week/month/year）和语言偏好（zh-CN/en/ja 等）
@@ -10,7 +12,9 @@
 - 学术搜索模式：设置 queryType="academic" 将启用 Arxiv、Semantic Scholar、Wikipedia 等学术搜索引擎
 - 购物比价模式：设置 queryType="shopping" 将启用 SMZDM/京东/淘宝/拼多多/苏宁/国美/唯品会/1688/当当/考拉海购/Amazon 等电商搜索引擎进行跨平台比价
 - 购物比价支持 platforms 参数：queryType="shopping" 时设置 platforms="jd,taobao,pdd" 可指定比价平台
-- 代码搜索模式：设置 queryType="code" 将启用 GitHub 仓库搜索
+- 代码搜索模式：设置 queryType="code" 将启用 GitHub 仓库搜索、GitHub Code Search（仓库内代码片段）、GitHub Issues/PR 搜索、GitLab、HuggingFace 等
+- GitHub 仓库搜索：支持直接搜索仓库代码（code search）、Issues/PR、以及读取仓库文件内容作为参考上下文
+- 仓库文件读取：使用 "owner/repo" 或 "owner/repo:path" 格式读取仓库目录结构或文件内容
 - 微信公众号搜索：默认启用搜狗微信搜索，可检索微信公众号文章
 - 中文网页搜索：默认启用百度搜索（对中文查询自动触发）
 - 自动提取搜索结果的发布日期（支持 ISO 日期、"2 days ago" 等相对日期格式）
@@ -28,10 +32,14 @@
   - 搜索类型（当可用时）：'auto'（均衡）、'fast'（快速）、'deep'（深度）
   - 时间范围过滤：使用 timeRange 参数按 day/week/month/year 过滤结果
   - 语言偏好：使用 lang 参数指定语言（如 "zh-CN" 获得中文结果）
+  - GitHub 仓库参考：queryType="code" 时可搜索仓库代码，或直接查询 "owner/repo" 格式读取仓库目录结构
+  - 仓库文件内容：使用 "owner/repo:path/to/file" 格式可直接读取文件内容作为参考上下文
   - 每条结果包含标题、域名、URL、摘要和发布日期，多引擎结果附带来源标记
   - 可为 Exa/Parallel 配置上下文字符数上限以优化 LLM 输出
   - 在单个 API 调用内自动完成搜索
   - 引擎健康状态跨调用持久化：连续失败的引擎会自动暂停并指数退避
+  - 引擎级速率限制：每个引擎有独立的最小请求间隔，防止短期内高频请求触发反爬
+  - User-Agent 轮换：每次 HTTP 请求使用不同的浏览器 UA，降低机器人检测风险
 
 当前年份是 {{year}}。在搜索近期信息或当前事件时，务必使用当前年份
 - 示例：如果当前是 2026 年，用户问"latest AI news"，搜索"AI news 2026"，而不是"AI news 2025"

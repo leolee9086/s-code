@@ -253,6 +253,8 @@ describe("tool.edit", () => {
             filePath: filepath,
             oldString: ["function configure() {", "  const enabled = true", "}"].join("\n"),
             newString: ["function configure() {", "  const enabled = false", "}"].join("\n"),
+            mtime: 0,
+            proof: "",
           })).message,
         ).toContain("Could not find oldString")
         expect(yield* load(filepath)).toBe(original)
@@ -271,6 +273,8 @@ describe("tool.edit", () => {
             filePath: filepath,
             oldString: ["function configure() {", "  const enabled = true", "}"].join("\n"),
             newString: ["function configure() {", "  const enabled = false", "}"].join("\n"),
+            mtime: 0,
+            proof: "",
           })).message,
         ).toContain("Could not find oldString")
         expect(yield* load(filepath)).toBe(original)

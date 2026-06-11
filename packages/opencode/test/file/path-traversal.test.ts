@@ -11,46 +11,13 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(File.defaultLayer)
 const read = (file: string) => File.use.read(file)
-const list = (dir?: string) => File.use.list(dir)
+const list = (dir?: string) => File.use.list(dir || ".")
 const expectAccessDenied = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const exit = yield* effect.pipe(Effect.exit)
     if (Exit.isSuccess(exit)) throw new Error("expected access denied")
     expect(Cause.squash(exit.cause)).toHaveProperty("message", "Access denied: path escapes project directory")
   })
-
-describe("Filesystem.contains", () => {
-  it.effect("allows paths within project", () =>
-    Effect.sync(() => {
-      expect(Filesystem.contains("/project", "/project/src")).toBe(true)
-      expect(Filesystem.contains("/project", "/project/src/file.ts")).toBe(true)
-      expect(Filesystem.contains("/project", "/project")).toBe(true)
-    }),
-  )
-
-  it.effect("blocks ../ traversal", () =>
-    Effect.sync(() => {
-      expect(Filesystem.contains("/project", "/project/../etc")).toBe(false)
-      expect(Filesystem.contains("/project", "/project/src/../../etc")).toBe(false)
-      expect(Filesystem.contains("/project", "/etc/passwd")).toBe(false)
-    }),
-  )
-
-  it.effect("blocks absolute paths outside project", () =>
-    Effect.sync(() => {
-      expect(Filesystem.contains("/project", "/etc/passwd")).toBe(false)
-      expect(Filesystem.contains("/project", "/tmp/file")).toBe(false)
-      expect(Filesystem.contains("/home/user/project", "/home/user/other")).toBe(false)
-    }),
-  )
-
-  it.effect("handles prefix collision edge cases", () =>
-    Effect.sync(() => {
-      expect(Filesystem.contains("/project", "/project-other/file")).toBe(false)
-      expect(Filesystem.contains("/project", "/projectfile")).toBe(false)
-    }),
-  )
-})
 
 /*
  * Integration tests for read() and list() path traversal protection.
@@ -101,6 +68,39 @@ describe("File.list path traversal protection", () => {
 
       const result = yield* list("subdir")
       expect(Array.isArray(result)).toBe(true)
+    }),
+  )
+})
+
+describe("Filesystem.contains", () => {
+  it.effect("allows paths within project", () =>
+    Effect.sync(() => {
+      expect(Filesystem.contains("/project", "/project/src")).toBe(true)
+      expect(Filesystem.contains("/project", "/project/src/file.ts")).toBe(true)
+      expect(Filesystem.contains("/project", "/project")).toBe(true)
+    }),
+  )
+
+  it.effect("blocks ../ traversal", () =>
+    Effect.sync(() => {
+      expect(Filesystem.contains("/project", "/project/../etc")).toBe(false)
+      expect(Filesystem.contains("/project", "/project/src/../../etc")).toBe(false)
+      expect(Filesystem.contains("/project", "/etc/passwd")).toBe(false)
+    }),
+  )
+
+  it.effect("blocks absolute paths outside project", () =>
+    Effect.sync(() => {
+      expect(Filesystem.contains("/project", "/etc/passwd")).toBe(false)
+      expect(Filesystem.contains("/project", "/tmp/file")).toBe(false)
+      expect(Filesystem.contains("/home/user/project", "/home/user/other")).toBe(false)
+    }),
+  )
+
+  it.effect("handles prefix collision edge cases", () =>
+    Effect.sync(() => {
+      expect(Filesystem.contains("/project", "/project-other/file")).toBe(false)
+      expect(Filesystem.contains("/project", "/projectfile")).toBe(false)
     }),
   )
 })

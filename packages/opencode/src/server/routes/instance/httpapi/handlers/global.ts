@@ -1,3 +1,4 @@
+import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { Config } from "@/config/config"
 import { Installation } from "@/installation"
 import { Effect } from "effect"
@@ -16,14 +17,9 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     })
 
     const event = Effect.fn("GlobalHttpApi.event")(function* () {
-      const info = yield* install.info()
       return {
         directory: "",
-        payload: {
-          id: "",
-          type: "server.instance.disposed" as const,
-          properties: { version: info.version },
-        },
+        payload: { id: "", type: "server.instance.disposed" as const, properties: { directory: "" } },
       }
     })
 
@@ -33,7 +29,7 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
     })
 
     const configUpdate = Effect.fn("GlobalHttpApi.configUpdate")(function* (ctx: {
-      payload: typeof Config.Info.Type
+      payload: typeof ConfigV1.Info.Type
     }) {
       yield* configSvc.update(ctx.payload as Config.Info)
       const info = yield* configSvc.get()

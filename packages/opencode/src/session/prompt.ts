@@ -1336,8 +1336,7 @@ export const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
-    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
-      function* (sessionID: SessionID) {
+    const runLoop = Effect.fnUntraced(function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
         const slog = elog.with({ sessionID })
         let structured: unknown
@@ -1637,9 +1636,13 @@ export const layer = Layer.effect(
             // auto-plan 模式：以 synthetic user message 追加到数据库，
             // 与进化模式/永续模式注入方式一致，确保自动排在消息序列末尾，
             // 避免动态百分比破坏开头消息的 prefix caching。
+            // 子任务 session（有 parentID）跳过 auto-plan 注入：
+            // auto-plan 的 synthetic user message 会获得比当前 assistant 更高的
+            // MessageID，导致循环退出条件（lastUser.id < lastAssistant.id）永远不满足，
+            // 使子 task 无限循环无法结束。
             const autoPlanCfg = (yield* config.get()).auto_plan
             const autoPlanEnabled = autoPlanCfg?.enabled ?? true
-            if (autoPlanEnabled) {
+            if (autoPlanEnabled && !session.parentID) {
               const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"]
               const threshold = autoPlanCfg?.context_threshold ?? 0.3
               const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
@@ -1907,89 +1910,22 @@ export const layer = Layer.effect(
 
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(
       function* (input: LoopInput) {
+        const sessionInfo = yield* sessions.get(input.sessionID).pipe(Effect.option)
+        const isRootSession = Option.isSome(sessionInfo) && !sessionInfo.value.parentID
+
         // 进化模式：如有待处理的续进消息，自动创建一条用户消息并持久化到数据库。
         // runLoop 随后会加载到这条新消息并自然继续处理（即使 session 之前已完成），
         // 无需用户手动输入任何内容。
-        if (isEvolveMode()) {
-          const evolveSession = yield* sessions.get(input.sessionID).pipe(
-            Effect.option,
-          )
-          if (Option.isSome(evolveSession) && evolveSession.value.parentID) {
-            // 子任务 session 跳过进化模式续进消息注入
-          } else {
-            const evolveMsg = readEvolveMessage()
-            if (evolveMsg) {
-              const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
-                Effect.provideService(Database.Service, database),
-              )
-              const { user: lastUser } = MessageV2.latest(msgs)
-              if (lastUser) {
-                const evolveUserMsg: SessionV1.User = {
-                  id: MessageID.ascending(),
-                  sessionID: input.sessionID,
-                  role: "user",
-                  time: { created: Date.now() },
-                  agent: lastUser.agent,
-                  model: lastUser.model,
-                }
-                yield* sessions.updateMessage(evolveUserMsg)
-                yield* sessions.updatePart({
-                  id: PartID.ascending(),
-                  messageID: evolveUserMsg.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  text: evolveMsg,
-                  synthetic: true,
-                } satisfies SessionV1.TextPart)
-              }
-            }
-          }
-        }
-        // 永续模式：进入时自动注入一条续行用户消息，驱动循环运行
-        if (isForeverMode()) {
-          const foreverSession = yield* sessions.get(input.sessionID).pipe(Effect.option)
-          if (Option.isSome(foreverSession) && !foreverSession.value.parentID) {
-            // 创建 EffectBridge，用于在 setInterval 回调中注入后缀消息
-            const foreverBridge = yield* EffectBridge.make()
-            // 初始化条件引擎（如配置了 file_watch/timer，服务可选）
-            const cfg = yield* config.get()
-            const foreverCfg = cfg.forever as ForeverConfigShape | undefined
-            if (foreverCfg?.conditions && Option.isSome(conditionEngineOption)) {
-              const notifyText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
-              yield* conditionEngineOption.value.init(
-                foreverCfg.conditions,
-                // 条件满足时通过 bridge 注入后缀消息，为下一轮循环准备
-                () => {
-                  foreverBridge.fork(
-                    injection.setSuffixOnce(input.sessionID, [
-                      { type: "text" as const, text: notifyText, synthetic: true },
-                    ]),
-                  )
-                },
-              ).pipe(Effect.ignore)
-            }
-            // 初始化 budget 状态（服务可选）
-            if (Option.isSome(foreverStateOption)) {
-              yield* foreverStateOption.value.readBudgetState(input.sessionID).pipe(Effect.ignore)
-            }
-
+        // 子任务 session（有 parentID）跳过进化模式续进消息注入。
+        if (isEvolveMode() && isRootSession) {
+          const evolveMsg = readEvolveMessage()
+          if (evolveMsg) {
             const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
               Effect.provideService(Database.Service, database),
             )
             const { user: lastUser } = MessageV2.latest(msgs)
-            // 只在最后一条消息是 assistant 且非 tool-calls 中止时注入
-            const lastAssistantMsgDone = msgs.findLast((m) => m.info.role === "assistant") as
-              | (SessionV1.WithParts & { info: SessionV1.Assistant })
-              | undefined
-            const shouldInject = !!(lastUser && lastAssistantMsgDone &&
-              lastAssistantMsgDone.info.id > lastUser.id &&
-              lastAssistantMsgDone.info.finish &&
-              !["tool-calls"].includes(lastAssistantMsgDone.info.finish))
-            if (shouldInject) {
-              const source = cfg.forever?.prompt?.source as { type: string; command?: string; args?: string[]; url?: string; text?: string } | undefined
-              const defaultText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
-              const prompt = yield* resolveForeverPrompt(source, defaultText)
-              const continueMsg: SessionV1.User = {
+            if (lastUser) {
+              const evolveUserMsg: SessionV1.User = {
                 id: MessageID.ascending(),
                 sessionID: input.sessionID,
                 role: "user",
@@ -1997,23 +1933,88 @@ export const layer = Layer.effect(
                 agent: lastUser.agent,
                 model: lastUser.model,
               }
-              yield* sessions.updateMessage(continueMsg)
+              yield* sessions.updateMessage(evolveUserMsg)
               yield* sessions.updatePart({
                 id: PartID.ascending(),
-                messageID: continueMsg.id,
+                messageID: evolveUserMsg.id,
                 sessionID: input.sessionID,
                 type: "text",
-                text: prompt,
+                text: evolveMsg,
                 synthetic: true,
               } satisfies SessionV1.TextPart)
             }
           }
         }
 
-        const loopResult = yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+        // 永续模式：进入时自动注入一条续行用户消息，驱动循环运行。
+        // 子任务 session（有 parentID）跳过永续模式逻辑，否则 task agent 会错误地进入永续循环，
+        // 导致子 task 永远无法结束。
+        if (isForeverMode() && isRootSession) {
+          // 创建 EffectBridge，用于在 setInterval 回调中注入后缀消息
+          const foreverBridge = yield* EffectBridge.make()
+          // 初始化条件引擎（如配置了 file_watch/timer，服务可选）
+          const cfg = yield* config.get()
+          const foreverCfg = cfg.forever as ForeverConfigShape | undefined
+          if (foreverCfg?.conditions && Option.isSome(conditionEngineOption)) {
+            const notifyText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
+            yield* conditionEngineOption.value.init(
+              foreverCfg.conditions,
+              // 条件满足时通过 bridge 注入后缀消息，为下一轮循环准备
+              () => {
+                foreverBridge.fork(
+                  injection.setSuffixOnce(input.sessionID, [
+                    { type: "text" as const, text: notifyText, synthetic: true },
+                  ]),
+                )
+              },
+            ).pipe(Effect.ignore)
+          }
+          // 初始化 budget 状态（服务可选）
+          if (Option.isSome(foreverStateOption)) {
+            yield* foreverStateOption.value.readBudgetState(input.sessionID).pipe(Effect.ignore)
+          }
 
-        // 永续模式：循环退出后启动背景轮询 fiber，等待条件满足后自动重新进入
-        if (isForeverMode() && Option.isSome(conditionEngineOption)) {
+          const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
+            Effect.provideService(Database.Service, database),
+          )
+          const { user: lastUser } = MessageV2.latest(msgs)
+          // 只在最后一条消息是 assistant 且非 tool-calls 中止时注入
+          const lastAssistantMsgDone = msgs.findLast((m) => m.info.role === "assistant") as
+            | (SessionV1.WithParts & { info: SessionV1.Assistant })
+            | undefined
+          const shouldInject = !!(lastUser && lastAssistantMsgDone &&
+            lastAssistantMsgDone.info.id > lastUser.id &&
+            lastAssistantMsgDone.info.finish &&
+            !["tool-calls"].includes(lastAssistantMsgDone.info.finish))
+          if (shouldInject) {
+            const source = cfg.forever?.prompt?.source as { type: string; command?: string; args?: string[]; url?: string; text?: string } | undefined
+            const defaultText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
+            const prompt = yield* resolveForeverPrompt(source, defaultText)
+            const continueMsg: SessionV1.User = {
+              id: MessageID.ascending(),
+              sessionID: input.sessionID,
+              role: "user",
+              time: { created: Date.now() },
+              agent: lastUser.agent,
+              model: lastUser.model,
+            }
+            yield* sessions.updateMessage(continueMsg)
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              messageID: continueMsg.id,
+              sessionID: input.sessionID,
+              type: "text",
+              text: prompt,
+              synthetic: true,
+            } satisfies SessionV1.TextPart)
+          }
+        }
+
+        const loopResult: SessionV1.WithParts = yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID) as Effect.Effect<SessionV1.WithParts>)
+
+        // 永续模式：仅对根 session 启动背景轮询 fiber，等待条件满足后自动重新进入。
+        // 子任务 session 不启动背景轮询，防止 task agent 被永续模式劫持。
+        if (isForeverMode() && isRootSession && Option.isSome(conditionEngineOption)) {
           yield* Effect.forkIn(scope)(foreverPollLoop(input.sessionID)).pipe(Effect.asVoid)
         }
 

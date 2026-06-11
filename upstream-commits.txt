@@ -1,0 +1,210 @@
+710e40870 chore: generate
+dac0dd530 feat(core): add connector authentication (#31837)
+bf05e8a12 fix(mcp): preserve headers during auth and debug (#31802)
+51b10b128 chore: generate
+47a45601f refactor(tui): replace v2 sync with data context (#31826)
+69623c2b7 chore: generate
+38536cf73 test(opencode): simplify processor layer wiring (#31823)
+8bf067599 feat(server): add v2 session API endpoints (#31822)
+ff967e582 chore: generate
+20bf18ffb test(opencode): simplify share layer wiring (#31811)
+51891d56e fix(snapshot): reuse source git objects to avoid re-hashing huge repos (#31798)
+cc2264646 docs: add branch naming guidance
+eb70b6137 test(opencode): simplify test registry layer wiring (#31761)
+6e2bcafd3 chore: update nix node_modules hashes
+07b983e82 feat(mcp): support server log notifications (#31752)
+c51a1588c tui: fix session list search filtering (#31748)
+f43b0d3af fix(mcp): apply timeouts to catalog requests (#31618)
+722f4dd41 chore: pin gitlab-ai-provider to 6.9.0 (#31741)
+bb82aab5c update opencode.jsonc
+936363e7a sync release versions for v1.17.3
+8688ed7e3 feat(web): data link
+5b5420316 chore: update nix node_modules hashes
+bed780fac chore: bump gitlab-ai-provider to 6.9.1 (#31728)
+14ec7ed5b fix fff disabling logic
+2c6527320 sync release versions for v1.17.2
+2e0f88d0e fix(desktop): restore linux launcher identity (#31709)
+e1073e5d1 chore: generate
+649618c50 fix(app): restore device attachment picker (#31707)
+02608a4e9 fix: recover from expired enterprise auth on remote config load (#31661)
+3ad6923c6 fix(opencode): let subagents use their own permissions (#31696)
+e4300e9b7 fix(core): disable fff by default on windows
+538cfaff0 feat(core): enable fff by default
+1dad38d1b fix(core): do not gate fff on initial scan
+c9e2a38bf ci: change model from gpt-5.4-nano to gpt-5.4-mini (#31695)
+5863e1254 put fff behind flag
+4c9abff44 sync release versions for v1.17.1
+2cf68f32b chore: generate
+90fb32be3 fix(core): accept deprecated reference config key (#31659)
+97e713e8a zen: deepseek v4 pro
+826419127 chore: update nix node_modules hashes
+e0449c0b9 fix(desktop): restore macOS auto-updates (#31621)
+5e342f711 chore: update nix node_modules hashes
+174ab5834 fix(mcp): apply timeouts to prompts and resources (#31612)
+954d61879 fix(opencode): support Anthropic fallback responses (#31611)
+91073360c fix(mcp): make client creation failure-safe (#31595)
+8a2cfc00c feat(core): add project reference guidance (#31601)
+0fc33e2a0 feat(app): /new-session route for new design (#31457)
+6c6ed68b5 sync release versions for v1.17.0
+e9106efbd chore: update nix node_modules hashes
+e9e261270 chore: Update fff to 0.9.4 (#31583)
+4ae468ff0 chore: generate
+785918262 fix(core): expose partial filesystem scan results
+be8fee5c2 chore: generate
+4597c687f fix(core): prefer shorter paths for tied search scores
+c4aa04904 fix(tui): let gutter replace current marker (#31586)
+1d46b5c33 chore: update nix node_modules hashes
+6ae6f0fe8 chore: generate
+a0409e64d refactor(core): unify filesystem search service (#31566)
+ce4e658e3 chore: update nix node_modules hashes
+215fb39fc chore: generate
+1cc94bb23 fix(desktop): update Electron stack and panel layout (#31571)
+bc42187c5 zen: update email
+80c0b0698 feat: add X-Session-Id header for proxy cache routing affinity (#31511)
+381eabb97 refactor(mcp): simplify service helpers (#31549)
+c939aa04f chore: generate
+9b8e356fc zen: add claude fable 5
+07e5ea936 feat(opencode): add typed application layer graph (#31531)
+7a54a2c49 chore: generate
+600e405ba fix(opencode): restore effect error logging (#31551)
+1daf535e6 chore: update nix node_modules hashes
+cc52dc396 chore: generate
+132ef5727 refactor(core): simplify location filesystem (#31545)
+0777cf1cc fix(mcp): log actionable connection statuses (#31544)
+c4bc90295 fix(opencode): support Claude Fable reasoning (#31546)
+d68397b42 fix(data): timestamp formatting
+531eebb88 zen: add north mini code model
+db9391e8a drop citation_options from cohere (#31543)
+f1c31f4eb fix(stats): use data branding assets
+ada5b31bb chore: generate
+ffcb45d7c feat(tui): show project copy in session list (#31421)
+6566ede93 refactor(core): consolidate references (#31539)
+0bb677cef feat(opencode): configure Cohere North model (#31536)
+8415ff50c chore: generate
+37522185d refactor(tui): centralize application exit (#31524)
+960eacebc test(core): avoid Windows worker close race (#31532)
+b4a641921 chore: stats -> data
+7c1e61af1 leave a breadcrumb comment about batchWindow zero (#31508)
+671d19378 docs: add uninstall troubleshooting steps (#31424)
+2ababc87d core: fix idle CPU use in file logger (#31478)
+5372c63c7 fix(app): clip rounded session panels (#31462)
+ab701d20e feat: add "reasoning" as interleaved field option for vLLM providers (#30477)
+384a8f58c feat(app): tabs help button (#31454)
+50c9d5221 chore: generate
+1a08ee77c feat(app): draft prompt state (#31452)
+79cff288a fix(opencode): pass abort signal to MCP tool calls (#31455)
+0efc334ff fix(opencode): paginate MCP catalogs (#31442)
+277ecc505 chore: generate
+f565ff3c0 feat(app): add draft tab support to tabs store (#31343)
+161247c70 fix(opencode): generate reasoning variants for all OpenRouter models. (#30332)
+a86ecf3bb fix: adjust item id stripping to happen prior to request signing (#31429)
+6e84142b5 fix(opencode): support MiniMax M3 thinking toggle (#31426)
+fc52c5ac8 fix(tui): trim select footer action highlight (#31411)
+537666149 chore: generate
+c06ad7c88 refactor(core): replace legacy logger with Effect logging (#31310)
+0a7cb20e6 fix(opencode): await run event loop (#31389)
+f43209bb8 fix(session): avoid sticky prompt tool overrides (#31394)
+b34d9242d fix(core): disable fff trace logs (#31380)
+965441202 chore: update nix node_modules hashes
+31d2fecf6 chore: upgrade OpenTUI to v0.3.4 (#31326)
+f3f59db3a chore: update nix node_modules hashes
+89e2a23b5 fix(core): restore npm proxy agent patch (#31373)
+ea5f97609 chore: generate
+411905107 fix: stabilize fff file results (#31369)
+f116a55e4 fix(stats): show new for leaderboard deltas
+89e371c94 chore: generate
+b1a6c40ad fix: speed up fff file search (#31366)
+1772e8ee6 docs(go): update MiniMax M3 pricing (#31350)
+0050134d9 fix(session): merge per-call tool rules into session permission (#30529)
+d46af9cf1 chore: generate
+bea56feb6 fix(lsp): resolve JDTLS root to topmost pom.xml in Java Maven multi-module projects (#28761)
+685a894a6 fix(opencode): include acp pending tool input (#31321)
+79ea379df zen: fix
+4863aedf3 console: update email
+b5cb9aae7 fix(opencode): respect MCP server capabilities (#31271)
+4d09a71ef chore: generate
+65a3f7f74 fix(desktop): few WSL bugs (#31095)
+b1d14acc3 chore: update web and desktop code owners (#31289)
+3867fa2ba chore: generate
+07808bea1 run: make minimal mode more minimal (#31227)
+914a643ab chore: update nix node_modules hashes
+c495635f0 chore: generate
+8ff40133b chore(opencode): update MCP SDK to 1.29.0 (#31268)
+aacdb34e3 fix(opencode): avoid duplicate skill catalog (#31269)
+233427f08 test(core): cover skill directory output (#31263)
+e82542b80 fix(desktop): disable hidden agent cycling (#31207)
+2006259a0 fix(desktop): style home session scrollbar (#31202)
+472b33113 chore: generate
+218147271 feat(desktop): open attachments in active project (#31192)
+a29deb1ee fix(app): refresh directory MCP status (#31194)
+f24049736 chore: update nix node_modules hashes
+21a644fef chore: generate
+106f8e94d refactor(tui): extract standalone package (#31193)
+7a2c49e76 chore: generate
+9b4d5b039 feat(desktop): make updates persistent and responsive (#31191)
+f20655bef fix(tui): sort connect providers alphabetically (#30891)
+31c099be4 chore: update nix node_modules hashes
+155e1f20d chore: generate
+fe0c4f8c7 refactor(server): canonicalize service API (#31049)
+53ff1b57c fix(core): preserve session failure causes
+1025540fc test(core): cover managed output read permissions (#31166)
+eb9a683b4 fix(core): harden unified tool runtime (#31171)
+48c26fa03 fix(test): release Windows search handles (#31172)
+10d1e04e9 fix(core): isolate image normalization (#31165)
+12acb9a59 docs(v2): update permission rule naming (#31167)
+807c804c2 fix(core): use static tool type imports (#31170)
+660a00d31 refactor(core): unify v2 tool architecture (#31168)
+effd27b23 chore(http-recorder): disable release automation (#31160)
+06d7840d1 docs: fix MCP header interpolation example to {env:VAR} (#31078)
+0875203a6 test: fix tool test (#31163)
+b9131aa69 fix: background agent prompting, lets kill this sleep behavior oml (#31162)
+4519a1da3 chore: update nix node_modules hashes
+77963d884 chore: generate
+7d3d80f84 feat(opencode): fff search tools (#27802)
+4814ab3a3 fix(core): enforce V2 tool permissions (#31061)
+747b8daaf fix(core): bound prompt cache session keys (#31062)
+1399323b7 chore: generate
+bd7eb0603 feat: desktop v2 everything WSL (#23407)
+09d9cf01f refactor(core): simplify search root protocol (#31060)
+4ac4df448 chore: update nix node_modules hashes
+147169e9b refactor(core): simplify filesystem read protocol (#31058)
+ceccde7e8 refactor(core): simplify filesystem mutation protocol (#31059)
+54f497454 feat(http-recorder): prepare public beta release (#31018)
+ba57718b0 feat(opencode): support non-interactive MCP add (#31054)
+3f0ef9b71 feat(opencode): add search to auth logout command (#31053)
+fa2b63f85 chore: update nix node_modules hashes
+83dca45dd fix(core): make V2 reads media-aware and binary-safe (#31038)
+f750deaa3 fix(app): increase project session limit and add scrolling (#31035)
+b36b85936 fix(stats): filter market share to go
+7c6adcf60 fix(core): scope v2 prompt cache by session (#31036)
+3e704d096 chore: generate
+1fd9c7774 feat(app): sessions list improvements (#30941)
+9ed17da55 chore: generate
+24347f336 feat(app): updates to project avatar (#30964)
+93a58f55c chore: generate
+e3a55db5b feat(app): improve servers UI (#30961)
+015e79fa5 fix(session): respect directory filter with workspaces (#30804)
+d5b205657 fix(tui): inject reminder after moving session (#31027)
+a645615a4 fix(opencode): limit generated project copy names (#31022)
+499a8a4b0 fix(tui): bootstrap new project copies (#31019)
+969bb90f6 chore: generate
+f591bf5f9 feat(tui): delete working copies from move dialog (#31017)
+025e1ac69 fix(core): validate public session model switches (#31012)
+820c984d4 fix(core): recover v2 context overflow (#31005)
+c814f84c8 fix(tui): update tool spacing before layout
+a57fb32d9 feat(core): expose session model switching (#31011)
+05d1104ec fix(core): scope Vertex provider transforms (#31004)
+7ebc7ffb8 chore: generate
+a9094fd05 feat(core): bound v2 tool output (#30999)
+760d52384 chore: generate
+0bdd9aa49 fix(core): preserve model request semantics (#30990)
+ca9bf7abf fix(opencode): honor Bedrock Mantle config (#31001)
+3bbf8c898 fix(opencode): terminate help output with newline (#30992)
+beae7290f feat(core): compact v2 session context (#30986)
+a7bd1cd0d chore: generate
+ecdfcd91c fix(tui): show current location in working copies; order by created; change shortcut; tab to cycle actions in dialog select (#30989)
+3151e2246 fix(core): harden model selection edges (#30987)
+d2204e0ff feat(core): honor default session models (#30982)
+f26a9e885 chore: generate
+12e38866e feat(core): interrupt v2 session execution (#30850)
+41bd9124f sync release versions for v1.16.2

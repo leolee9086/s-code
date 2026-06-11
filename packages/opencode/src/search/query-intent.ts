@@ -6,9 +6,39 @@
  */
 import type { SearchEngine } from "./engine"
 
+/**
+ * 扩展的查询意图类型，包含 GitHub 仓库/代码搜索检测
+ */
+export interface GitHubIntent {
+  /** 检测到的 GitHub 仓库 owner */
+  owner?: string
+  /** 检测到的 GitHub 仓库 name */
+  repo?: string
+  /** 是否为 GitHub 仓库查询（owner/repo 格式） */
+  isGitHubRepo?: boolean
+  /** 是否为 GitHub 代码搜索（含 repo: 限定符） */
+  isGitHubCodeSearch?: boolean
+  /** 是否为 GitHub issue/PR 查询（含 github.com 链接或 issue 关键词） */
+  isGitHubIssue?: boolean
+}
+
+// ── GitHub 检测模式 ─────────────────────────────────
+
+/** GitHub 仓库匹配: owner/repo (如 facebook/react, anomalyco/opencode) */
+const GITHUB_REPO_PATTERN = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/
+
+/** GitHub 代码搜索限定符: repo:owner/name */
+const GITHUB_CODE_QUALIFIER = /\brepo:([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\b/
+
+/** GitHub URL 匹配: github.com/owner/repo */
+const GITHUB_URL_PATTERN = /github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)(?:\/.*)?$/
+
+/** 编程语言/框架名称（用于 GitHub 代码搜索检测） */
+const GITHUB_CODE_KEYWORDS = /\b(repo|code search|in:file|language:)\b/i
+
 // ── 意图类型 ──────────────────────────────────────────
 
-export interface QueryIntent {
+export interface QueryIntent extends Partial<GitHubIntent> {
   queryType?: "general" | "code" | "news" | "academic" | "social" | "video" | "shopping"
   isTranslation?: boolean
   isCurrency?: boolean
@@ -78,10 +108,58 @@ const CODE_PATTERN = new RegExp(
 // ── 意图检测 ──────────────────────────────────────────
 
 /**
+ * 检测 GitHub 相关查询
+ *
+ * 识别以下模式：
+ * - "facebook/react" → 仓库搜索
+ * - "repo:facebook/react" → 代码搜索
+ * - "function foo repo:facebook/react" → 代码搜索
+ * - "github.com/facebook/react/issues" → issue 搜索
+ * - "react repo:facebook/react language:ts" → 代码搜索
+ */
+export function detectGitHubQuery(query: string): GitHubIntent | undefined {
+  const trimmed = query.trim()
+  if (!trimmed) return undefined
+
+  // 检查 GitHub URL
+  const urlMatch = trimmed.match(GITHUB_URL_PATTERN)
+  if (urlMatch) {
+    const owner = urlMatch[1]
+    const repo = urlMatch[2]
+    if (trimmed.includes("/issues") || trimmed.includes("/pull") || trimmed.includes("issue") || trimmed.includes("PR")) {
+      return { owner, repo, isGitHubIssue: true, isGitHubRepo: true }
+    }
+    return { owner, repo, isGitHubRepo: true }
+  }
+
+  // 检查 repo: 限定符（GitHub Code Search）
+  const codeMatch = trimmed.match(GITHUB_CODE_QUALIFIER)
+  if (codeMatch) {
+    const owner = codeMatch[1]
+    const repo = codeMatch[2]
+    return { owner, repo, isGitHubCodeSearch: true, isGitHubRepo: true }
+  }
+
+  // 检查 owner/repo 格式（纯仓库名查询）
+  const repoMatch = trimmed.match(GITHUB_REPO_PATTERN)
+  if (repoMatch) {
+    const parts = trimmed.split("/")
+    const owner = parts[0]
+    const repo = parts[1]
+    // 排除常见误匹配（如 URL、文件路径、版本号等）
+    if (owner.length >= 2 && repo.length >= 2 && !owner.includes(".") && !trimmed.startsWith("http")) {
+      return { owner, repo, isGitHubRepo: true }
+    }
+  }
+
+  return undefined
+}
+
+/**
  * 检测查询意图，返回建议的 queryType 和额外标记。
  * 规则优先级从高到低，匹配即返回。
  */
-export function detectQueryIntent(query: string): QueryIntent {
+export function detectQueryIntent(query: string): QueryIntent & GitHubIntent {
   const trimmed = query.trim()
   if (!trimmed) return {}
 
@@ -105,7 +183,13 @@ export function detectQueryIntent(query: string): QueryIntent {
     return { queryType: "general", isTranslation: true }
   }
 
-  // 5. 代码/技术
+  // 5. GitHub 仓库/代码搜索检测（优先于通用代码检测）
+  const gh = detectGitHubQuery(trimmed)
+  if (gh?.isGitHubRepo) {
+    return { ...gh, queryType: "code" }
+  }
+
+  // 6. 代码/技术
   if (CODE_PATTERN.test(trimmed) || LANG_PATTERN.test(trimmed)) {
     return { queryType: "code" }
   }

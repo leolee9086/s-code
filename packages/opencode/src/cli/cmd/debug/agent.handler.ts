@@ -5,6 +5,7 @@ import { basename } from "path"
 import { Cause, Effect } from "effect"
 import { Agent } from "../../../agent/agent"
 import { Provider } from "@/provider/provider"
+import { getDatabaseChannel } from "@opencode-ai/core/installation/version"
 import { Session } from "@/session/session"
 import type { MessageV2 } from "../../../session/message-v2"
 import { MessageID, PartID } from "../../../session/schema"
@@ -171,8 +172,11 @@ const createToolContext = Effect.fn("Cli.debug.agent.createToolContext")(functio
 
   const ruleset = Permission.merge(agent.permission, session.permission ?? [])
 
+  const channel = getDatabaseChannel()
+
   return {
     sessionID: session.id,
+    channel,
     messageID,
     callID: PartID.ascending(),
     agent: agent.name,

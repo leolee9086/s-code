@@ -6,6 +6,7 @@ import DESCRIPTION from "./websearch.txt"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Search } from "@/search"
+import { getGlobalRateLimiter } from "@/search/rate-limiter"
 
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "网络搜索查询词" }),
@@ -35,6 +36,14 @@ export const Parameters = Schema.Struct({
     description: "（仅 queryType='shopping' 时生效）指定购物平台，逗号分隔。可选值: smzdm, jd, taobao, tmall, pdd, suning, gome, vip, 1688, dangdang, kaola, amazon-cn, amazon-us, ebay。示例: 'jd,taobao,pdd'",
   }),
 })
+
+/** 格式化速率限制器状态文本（供元数据使用） */
+function formatRateLimiterStatus(): string | undefined {
+  const status = getGlobalRateLimiter().getStatus()
+  const entries = Object.entries(status)
+  if (entries.length === 0) return undefined
+  return entries.map(([e, s]) => `${e}:${Math.round(s.lastCallAgo / 1000)}s前/间隔${s.interval}ms`).join(" ")
+}
 
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel", "duckduckgo"])
 export type WebSearchProvider = Schema.Schema.Type<typeof WebSearchProviderSchema>
@@ -99,7 +108,7 @@ function callMultiEngine(
   http: HttpClient.HttpClient,
   params: Schema.Schema.Type<typeof Parameters>,
   flags: { exa: boolean; parallel: boolean },
-): Effect.Effect<{ output: string | undefined; engines: readonly string[]; engineStatus?: string }> {
+): Effect.Effect<{ output: string | undefined; engines: readonly string[]; engineStatus?: string; rateLimitInfo?: string }> {
   return Effect.gen(function* () {
     // 自动检测查询意图（覆盖 queryType），用户显式指定的优先
     const intent = Search.QueryIntent.detectQueryIntent(params.query ?? "")
@@ -175,7 +184,10 @@ function callMultiEngine(
     // 生成引擎健康状态报告（用于调试）
     const engineStatus = Search.Aggregator.formatEngineStatusReport(state.engineStatuses)
 
-    return { output, engines: engineNames, engineStatus }
+    // 速率限制器状态
+    const rateLimitInfo = formatRateLimiterStatus()
+
+    return { output, engines: engineNames, engineStatus, rateLimitInfo }
   })
 }
 
@@ -192,7 +204,10 @@ function callProvider(
       return {
         output: result.output,
         engines: result.engines,
-        metadata: result.engineStatus ? { engineStatus: result.engineStatus } : undefined,
+        metadata: {
+          ...(result.engineStatus ? { engineStatus: result.engineStatus } : {}),
+          ...(result.rateLimitInfo ? { rateLimitInfo: result.rateLimitInfo } : {}),
+        },
       }
     })
   }

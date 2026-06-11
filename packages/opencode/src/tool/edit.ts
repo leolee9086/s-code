@@ -145,15 +145,22 @@ export const EditTool = Tool.define(
               }
 
               for (const proofLine of proofLines) {
-                const match = proofLine.match(/^(\d+):\s*(.*)$/)
-                if (!match) {
+                const colon = proofLine.indexOf(":")
+                if (colon === -1) {
                   throw new Error(
                     `Invalid proof format: each proof line must be in "行号: 行内容" format (e.g. "42: some content"). ` +
                     `Re-read the file with Read (includeMeta: true) and try again.`
                   )
                 }
-                const lineNumber = parseInt(match[1], 10)
-                const lineContent = match[2]
+                const lineNumberStr = proofLine.slice(0, colon)
+                const afterColon = proofLine.slice(colon + 1)
+                if (lineNumberStr.length === 0 || !/^\d+$/.test(lineNumberStr)) {
+                  throw new Error(
+                    `Invalid proof format: each proof line must be in "行号: 行内容" format (e.g. "42: some content"). ` +
+                    `Re-read the file with Read (includeMeta: true) and try again.`
+                  )
+                }
+                const lineNumber = parseInt(lineNumberStr, 10)
 
                 if (lineNumber < 1 || lineNumber > contentLines.length) {
                   throw new Error(
@@ -169,10 +176,12 @@ export const EditTool = Tool.define(
                   )
                 }
 
-                const actualLine = contentLines[lineNumber - 1]
-                if (actualLine !== lineContent) {
+                // Verify the proof line exactly matches Read's output format: "<lineNumber>: <actualLine>"
+                // This preserves leading/trailing whitespace in the line content.
+                const expectedReadLine = `${lineNumber}: ${contentLines[lineNumber - 1]}`
+                if (proofLine !== expectedReadLine) {
                   throw new Error(
-                    `Proof verification failed at line ${lineNumber}: expected "${lineContent}" but found "${actualLine}". ` +
+                    `Proof verification failed at line ${lineNumber}: expected "${expectedReadLine}" but found "${proofLine}". ` +
                     `File has been modified since your last read (mtime changed from ${params.mtime} to ${Math.floor(actualMtime)}). ` +
                     `Re-read the file with Read (includeMeta: true) and include proof lines with your edit invocation, then try again.`
                   )

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 搜索引擎选择器
  * 根据环境配置选择可用引擎
  * 借鉴 SearXNG 的引擎选择逻辑：按优先级和可用性动态选择
@@ -18,6 +18,14 @@ import { makeWikipedia } from "./engines/wikipedia"
 import { makeArxiv } from "./engines/arxiv"
 import { makeSemanticScholar } from "./engines/semantic-scholar"
 import { makeGitHub } from "./engines/github"
+import { makeGitHubCode } from "./engines/github-code"
+import { makeMDN } from "./engines/mdn"
+import { makeDocsRs } from "./engines/docsrs"
+import { makeReactDocs } from "./engines/react-docs"
+import { makeVueDocs } from "./engines/vue-docs"
+import { makePythonDocs } from "./engines/python-docs"
+import { makeGitHubIssues } from "./engines/github-issues"
+import { makeGitHubRepoFiles } from "./engines/github-repo-files"
 import { makeUnsplash, makePixabay, makePubMed, makeHackerNews, makeDockerHub, makeNpm } from "./engines/open-api"
 import { makeBingImages } from "./engines/bing-images"
 import { makeSogou } from "./engines/sogou"
@@ -840,6 +848,78 @@ export function selectEngines(
       maxResults: 5,
       priority: 1,
       requiresKey: !!process.env.GITHUB_TOKEN,
+    })))
+    // GitHub Code Search — 在仓库内搜索代码片段
+    engines.push(makeGitHubCode(makeEngineConfig({
+      name: "github-code",
+      weight: 1.1,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 2,
+      requiresKey: !!process.env.GITHUB_TOKEN,
+    })))
+    // GitHub Issues/PR Search — 搜索 issues 和 pull requests
+    engines.push(makeGitHubIssues(makeEngineConfig({
+      name: "github-issues",
+      weight: 0.9,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: !!process.env.GITHUB_TOKEN,
+    })))
+    // GitHub Repo Files — 读取仓库文件（query: "owner/repo" 或 "owner/repo:path"）
+    engines.push(makeGitHubRepoFiles(makeEngineConfig({
+      name: "github-repo-files",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(20)),
+      maxResults: 5,
+      priority: 1,
+      requiresKey: !!process.env.GITHUB_TOKEN,
+    })))
+    // MDN Web Docs — Web 开发文档搜索
+    engines.push(makeMDN(makeEngineConfig({
+      name: "mdn",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    // docs.rs — Rust 包文档搜索
+    engines.push(makeDocsRs(makeEngineConfig({
+      name: "docsrs",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    // React 官方文档
+    engines.push(makeReactDocs(makeEngineConfig({
+      name: "react-docs",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    // Vue.js 官方文档
+    engines.push(makeVueDocs(makeEngineConfig({
+      name: "vue-docs",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
+    })))
+    // Python 官方文档
+    engines.push(makePythonDocs(makeEngineConfig({
+      name: "python-docs",
+      weight: 0.8,
+      timeout: Duration.toMillis(Duration.seconds(15)),
+      maxResults: 5,
+      priority: 0,
+      requiresKey: false,
     })))
     engines.push(makeGitLab(makeEngineConfig({
       name: "gitlab",

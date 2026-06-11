@@ -11,6 +11,7 @@ export const MAX_CONCURRENCY = 10
 import { HttpClient } from "effect/unstable/http"
 import type { EngineStatus, SearchEngine, SearchOptions, SearchResult } from "./engine"
 import { AccessDeniedError, CaptchaError, EngineError, RateLimitError, TimeoutError, makeEngineStatus } from "./engine"
+import { getGlobalRateLimiter } from "./rate-limiter"
 
 /** 执行器状态（可变，追踪引擎健康） */
 export class ExecutorState {
@@ -102,6 +103,9 @@ export function executeAll(
  * - Captcha/AccessDenied: 永久暂停
  * - Timeout: 计数为失败
  * - 其他: 计数为失败
+ *
+ * 在引擎调用前检查速率限制器（RateLimiter），确保最小请求间隔。
+ * 借鉴 s-forge analysis: 每个引擎独立追踪最近调用时间。
  */
 function executeEngineSafely(
   engine: SearchEngine,
@@ -113,6 +117,14 @@ function executeEngineSafely(
   const startTime = Date.now()
 
   return (Effect.gen(function* () {
+    // 引擎级速率限制：确保最小请求间隔
+    // 借鉴 s-forge analysis RateLimiter 设计
+    const limiter = getGlobalRateLimiter()
+    const waitMs = limiter.check(engine.name)
+    if (waitMs > 0) {
+      yield* Effect.sleep(`${waitMs} millis`)
+    }
+
     const maybeResults = yield* engine.search(http, query, opts).pipe(
       Effect.timeout(engine.config.timeout),
     )

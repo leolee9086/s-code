@@ -12,7 +12,7 @@
 //   svc.clear(sessionID) → 清除所有注入
 import { Context, Effect, Layer } from "effect"
 import type { PartID, SessionID } from "./schema"
-import type { SessionLegacy } from "@opencode-ai/core/session/legacy"
+import * as SessionLegacy from "@opencode-ai/core/v1/session"
 
 // ---- 类型定义 ----
 
