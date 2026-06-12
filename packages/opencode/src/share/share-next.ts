@@ -291,8 +291,11 @@ export const layer = Layer.effect(
 
       yield* sync(sessionID, [
         { type: "session", data: info },
-        ...messages.map((item) => ({ type: "message" as const, data: item.info })),
-        ...messages.flatMap((item) => item.parts.map((part) => ({ type: "part" as const, data: part }))),
+        // 使用类型断言：运行时的 User/Assistant 结构与 SDK.Message 一致，
+        // 但 OutputFormatJsonSchema.schema 在 core 中为 Schema.Json（含 null），
+        // 在 SDK 中为 JsonSchema（不含 null），实际运行时始终为非 null 对象。
+        ...messages.map((item) => ({ type: "message" as const, data: item.info as unknown as SDK.Message })),
+        ...messages.flatMap((item) => item.parts.map((part) => ({ type: "part" as const, data: part as unknown as SDK.Part }))),
         { type: "session_diff", data: diffs },
         { type: "model", data: models },
       ])
