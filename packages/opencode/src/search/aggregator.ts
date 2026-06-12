@@ -45,18 +45,22 @@ function isSimilarTitle(a: string, b: string): boolean {
 /**
  * 计算聚合评分
  *
- * 借鉴 SearXNG 的 calculate_score 算法，但增加了时效性衰减因子。
+ * 借鉴 SearXNG 的 calculate_score 算法，但增加了时效性衰减因子和文本相关性。
  *
  * 评分组成：
  * 1. 基础分 = Σ(weight / position) — 位置越前、引擎权重越高，得分越高
  * 2. 多样性加分 = 基础分 × (1 + (引擎数-1) × 0.2) — 多引擎一致结果加分
  * 3. 时效性衰减 = 分 × max(0.5, 1 - 天数/365) — 一年内线性衰减至 50%
+ * 4. 文本相关性加分 = 标题匹配 × 2.0 + snippet匹配 × 1.0
  */
 export function calculateScore(
   engines: readonly string[],
   positions: readonly number[],
   weights: Map<string, number>,
   publishedDate?: number,
+  title?: string,
+  snippet?: string,
+  query?: string,
 ): number {
   // 基础分：加权位置分
   let score = 0
@@ -72,6 +76,13 @@ export function calculateScore(
     const daysAgo = (Date.now() - publishedDate) / 86_400_000
     const recencyFactor = Math.max(0.5, 1 - daysAgo / 365)
     score *= recencyFactor
+  }
+
+  // 文本相关性加分（标题和snippet与查询的匹配度）
+  if (query && (title || snippet)) {
+    const titleRel = title ? snippetRelevance(title, query) : 0
+    const snippetRel = snippet ? snippetRelevance(snippet, query) : 0
+    score += titleRel * 2.0 + snippetRel * 1.0
   }
 
   return score
@@ -127,7 +138,7 @@ export function aggregate(
 
   // 阶段 3: 评分（含时效性衰减）+ 多样性排序
   for (const r of merged) {
-    r.score = calculateScore(r.engines, r.positions, ctx.weights, r.publishedDate)
+    r.score = calculateScore(r.engines, r.positions, ctx.weights, r.publishedDate, r.title, r.snippet, query)
   }
   merged.sort((a, b) => b.score - a.score)
 

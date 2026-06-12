@@ -11,7 +11,7 @@ import { getGlobalRateLimiter } from "@/search/rate-limiter"
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "网络搜索查询词" }),
   numResults: Schema.optional(Schema.Number).annotate({
-    description: "返回的搜索结果数量（默认 8）",
+    description: "返回的搜索结果数量（默认 300）",
   }),
   livecrawl: Schema.optional(Schema.Literals(["fallback", "preferred"])).annotate({
     description:
@@ -138,7 +138,7 @@ function callMultiEngine(
       : engines
     if (filteredEngines.length === 0) return { output: undefined, engines: [] }
 
-    const numResults = params.numResults || 8
+    const numResults = params.numResults || 300
     const cacheKey = Search.Cache.ResultCache.makeKey(`${params.query}|t:${params.timeRange ?? "any"}|l:${params.lang ?? "any"}|q:${effectiveQueryType}`, { numResults })
 
     // 检查缓存（内存热层 → SQLite 冷层 → 搜索引擎）

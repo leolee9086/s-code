@@ -250,7 +250,7 @@ export function selectEngines(
     name: "duckduckgo",
     weight: 1.0,
     timeout: Duration.toMillis(Duration.seconds(15)),
-    maxResults: 8,
+    maxResults: 50,
   })))
 
   // Bing 搜索 — 无需 API key，通过 HTML 解析实现
@@ -259,7 +259,7 @@ export function selectEngines(
     name: "bing",
     weight: 0.9,
     timeout: Duration.toMillis(Duration.seconds(15)),
-    maxResults: 8,
+    maxResults: 50,
     priority: 1,
     requiresKey: false,
   })))
@@ -272,7 +272,7 @@ export function selectEngines(
       name: "brave",
       weight: 1.2,
       timeout: Duration.toMillis(Duration.seconds(15)),
-      maxResults: 8,
+      maxResults: 50,
       priority: 1,
       requiresKey: false,
     })))
@@ -284,7 +284,7 @@ export function selectEngines(
       name: "startpage",
       weight: 1.1,
       timeout: Duration.toMillis(Duration.seconds(15)),
-      maxResults: 8,
+      maxResults: 50,
       priority: 1,
       requiresKey: false,
     })))
@@ -431,7 +431,7 @@ export function selectEngines(
       name: "youtube",
       weight: 1.2,
       timeout: Duration.toMillis(Duration.seconds(20)),
-      maxResults: 8,
+      maxResults: 50,
       priority: 2,
       requiresKey: false,
     })))
@@ -540,7 +540,7 @@ export function selectEngines(
       name: "baidu",
       weight: 0.9,
       timeout: Duration.toMillis(Duration.seconds(15)),
-      maxResults: 8,
+      maxResults: 50,
       priority: 1,
       requiresKey: false,
     })))
@@ -577,7 +577,7 @@ export function selectEngines(
       name: "google",
       weight: 1.3,
       timeout: Duration.toMillis(Duration.seconds(20)),
-      maxResults: 8,
+      maxResults: 50,
       priority: 2,
       requiresKey: false,
     })))
@@ -1180,7 +1180,7 @@ export function selectEngines(
       name: "smzdm",
       weight: 0.8,
       timeout: Duration.toMillis(Duration.seconds(20)),
-      maxResults: 8,
+      maxResults: 50,
       priority: 1,
       requiresKey: false,
     })))

@@ -76,7 +76,7 @@ export function makeEngineConfig(data: {
     name: data.name,
     weight: data.weight ?? 1.0,
     timeout: data.timeout ?? Duration.toMillis(Duration.seconds(15)),
-    maxResults: data.maxResults ?? 8,
+    maxResults: data.maxResults ?? 50,
     requiresKey: data.requiresKey ?? false,
     priority: data.priority ?? 0,
   }
