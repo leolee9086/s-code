@@ -836,11 +836,24 @@ function WebFetch(props: ToolProps) {
 
 function WebSearch(props: ToolProps) {
   const label = createMemo(() => webSearchProviderLabel(props.metadata.provider))
+  const query = createMemo(() => stringValue(props.input.query) ?? "")
+  const output = createMemo(() => (props.output ?? "").trim())
   return (
-    <InlineTool icon="◈" pending="Searching web..." complete={toolComplete(props.part)} part={props.part}>
-      {label()} "{stringValue(props.input.query) ?? pendingInput(props.part)}"{" "}
-      <Show when={numberValue(props.metadata.numResults)}>{(results) => <>({results()} results)</>}</Show>
-    </InlineTool>
+    <Switch>
+      <Match when={output()}>
+        <BlockTool
+          title={`# ${label()}: ${query()}`}
+          part={props.part}
+        >
+          <text>{output()}</text>
+        </BlockTool>
+      </Match>
+      <Match when={true}>
+        <InlineTool icon="◈" pending="Searching web..." complete={toolComplete(props.part)} part={props.part}>
+          {label()} "{query() || pendingInput(props.part)}"
+        </InlineTool>
+      </Match>
+    </Switch>
   )
 }
 

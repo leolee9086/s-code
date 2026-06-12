@@ -108,6 +108,7 @@ function callMultiEngine(
   http: HttpClient.HttpClient,
   params: Schema.Schema.Type<typeof Parameters>,
   flags: { exa: boolean; parallel: boolean },
+  onProgress?: (done: number, total: number, current: string, partialResults: readonly import("@/search/engine").SearchResult[]) => Effect.Effect<void>,
 ): Effect.Effect<{ output: string | undefined; engines: readonly string[]; engineStatus?: string; rateLimitInfo?: string }> {
   return Effect.gen(function* () {
     // 自动检测查询意图（覆盖 queryType），用户显式指定的优先
@@ -161,7 +162,7 @@ function callMultiEngine(
       timeRange: params.timeRange,
       lang: params.lang,
     })
-    const execResult = yield* Search.Executor.executeAll(filteredEngines, http, params.query, opts, state)
+    const execResult = yield* Search.Executor.executeAll(filteredEngines, http, params.query, opts, state, onProgress)
 
     // 缓存成功结果（写入内存 + SQLite 双层）
     if (execResult.results.length > 0) {
@@ -196,11 +197,12 @@ function callProvider(
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
   ctx: Tool.Context,
+  onProgress?: (done: number, total: number, current: string, partialResults: readonly import("@/search/engine").SearchResult[]) => Effect.Effect<void>,
 ): Effect.Effect<{ output: string | undefined; engines: readonly string[]; metadata?: Record<string, unknown> }> {
   if (provider === "duckduckgo") {
     // DuckDuckGo → 多引擎聚合模式（DuckDuckGo + Brave 等并行搜索）
     return Effect.gen(function* () {
-      const result = yield* callMultiEngine(http, params, { exa: false, parallel: false })
+      const result = yield* callMultiEngine(http, params, { exa: false, parallel: false }, onProgress)
       return {
         output: result.output,
         engines: result.engines,
@@ -279,7 +281,7 @@ export const WebSearchTool = Tool.define(
             parallel: flags.enableParallel,
           })
           const title = webSearchProviderLabel(provider)
-          yield* ctx.metadata({ title: `${title} "${params.query}"`, metadata: { provider } })
+          yield* ctx.metadata({ title: `正在搜索 "${params.query}"`, metadata: { provider, searchProgress: "starting" } })
 
           yield* ctx.ask({
             permission: "websearch",
@@ -304,7 +306,14 @@ export const WebSearchTool = Tool.define(
             }
           }
 
-          const result = yield* callProvider(http, provider, params, ctx).pipe(
+          // 进度回调 — ctx.metadata() 已自动发布 Tool.Progress 到 V2 TUI
+          const onProgress: (done: number, total: number, current: string, partial: readonly import("@/search/engine").SearchResult[]) => Effect.Effect<void> = (done, total, current, partial) =>
+            ctx.metadata({
+              title: `搜索中 ${done}/${total} (${current})${partial.length > 0 ? ` · ${partial.length} 条` : ""}`,
+              metadata: { searchProgress: `${done}/${total}`, currentEngine: current, provider, partialCount: partial.length },
+            })
+
+          const result = yield* callProvider(http, provider, params, ctx, onProgress).pipe(
             Effect.catch((err: unknown) =>
               Effect.succeed({
                 output: `搜索请求失败: ${err instanceof Error ? err.message : String(err)}。请检查网络连接后重试。`,
@@ -316,7 +325,7 @@ export const WebSearchTool = Tool.define(
 
           return {
             output: result.output ?? "未找到搜索结果。请尝试其他查询词。",
-            title: `${title}: ${params.query}`,
+            title: result.engines.length > 0 ? `${title}: ${params.query} (${result.engines.length} 个引擎)` : `${title}: ${params.query}`,
             metadata: { provider, available: true, engines: result.engines, ...(result.metadata ?? {}) },
           }
         }).pipe(Effect.orDie),

@@ -61,6 +61,7 @@ export function executeAll(
   query: string,
   opts: SearchOptions,
   state: ExecutorState,
+  onProgress?: (done: number, total: number, current: string, partialResults: readonly SearchResult[]) => Effect.Effect<void>,
 ): Effect.Effect<ExecuteResult, never, never> {
   return Effect.gen(function* () {
     // 过滤暂停中的引擎（熔断器恢复检测）
@@ -77,9 +78,23 @@ export function executeAll(
 
     if (active.length === 0) return { results: [], errors: [] }
 
+    const total = active.length
+    const done = { value: 0 }
+    const partialResults = { all: [] as SearchResult[] }
+
     const outcomes = yield* Effect.forEach(
       active,
-      (engine) => executeEngineSafely(engine, http, query, opts, state),
+      (engine) =>
+        executeEngineSafely(engine, http, query, opts, state).pipe(
+          Effect.tap((outcome) =>
+            Effect.sync(() => {
+              done.value++
+              if (outcome._tag === "success") partialResults.all.push(...outcome.results)
+            }).pipe(
+              Effect.flatMap(() => onProgress?.(done.value, total, engine.name, partialResults.all) ?? Effect.void),
+            ),
+          ),
+        ),
       { concurrency: MAX_CONCURRENCY },
     )
 

@@ -15,7 +15,9 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import type { TaskPromptOps } from "@/tool/task"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
+import * as DateTime from "effect/DateTime"
+import { ToolOutput } from "@opencode-ai/core/tool-output"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { InstanceState } from "@/effect/instance-state"
@@ -25,6 +27,9 @@ import * as EffectLogger from "@opencode-ai/core/effect/logger"
 import { EffectBridge } from "@/effect/bridge"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { EventV2Bridge } from "@/event-v2-bridge"
+import { SessionEvent } from "@opencode-ai/core/session/event"
+import { toolText } from "@opencode-ai/llm"
 
 const log = EffectLogger.create({ service: "session.tools" })
 
@@ -43,6 +48,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const run = yield* EffectBridge.make()
   const plugin = yield* Plugin.Service
   const permission = yield* Permission.Service
+  const events = yield* EventV2Bridge.Service
   const registry = yield* ToolRegistry.Service
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
@@ -68,18 +74,33 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     agent: input.agent.name,
     messages: input.messages,
     metadata: (val) =>
-      input.processor.updateToolCall(options.toolCallId, (match) => {
-        if (!["running", "pending"].includes(match.state.status)) return match
-        return {
-          ...match,
-          state: {
-            title: val.title,
-            metadata: val.metadata,
-            status: "running",
-            input: args,
-            time: { start: Date.now() },
-          },
+      Effect.gen(function* () {
+        const part = yield* input.processor.updateToolCall(options.toolCallId, (match) => {
+          if (!["running", "pending"].includes(match.state.status)) return match
+          return {
+            ...match,
+            state: {
+              title: val.title,
+              metadata: val.metadata,
+              status: "running",
+              input: args,
+              time: { start: Date.now() },
+            },
+          }
+        })
+        // 同步发布 Tool.Progress 事件，使 V2 TUI 获得实时进度更新
+        if (part && options.toolCallId) {
+          const progressText = val.title ?? ""
+          yield* events.publish(SessionEvent.Tool.Progress, {
+            sessionID: input.session.id,
+            assistantMessageID: input.processor.message.id as any,
+            callID: options.toolCallId,
+            timestamp: DateTime.makeUnsafe(Date.now()),
+            structured: val.metadata ?? {},
+            content: progressText ? [ToolOutput.text({ type: "text", text: progressText })] : [],
+          }).pipe(Effect.ignore)
         }
+        return part
       }),
     ask: (req) =>
       permission
