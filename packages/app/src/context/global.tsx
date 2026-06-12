@@ -5,7 +5,7 @@ import { createServerProjects, ServerConnection, useServer } from "./server"
 import { useServerHealth } from "@/utils/server-health"
 import { createServerSdkContext } from "./server-sdk"
 import { createServerSyncContext } from "./server-sync"
-import { getOwner } from "solid-js/web"
+import { getOwner } from "solid-js"
 import { QueryClient } from "@tanstack/solid-query"
 import type { ServerScope } from "@/utils/server-scope"
 
@@ -48,7 +48,7 @@ export const { use: useGlobal, provider: GlobalProvider } = createSimpleContext(
       const root = createRoot((dispose) => {
         const serverCtx = createServerCtx(conn, server.scope(key), server.projects.forServer(key))
         return { dispose, serverCtx }
-      }, owner as any)
+      }, owner )
       serverCtxs.set(key, root)
       return root.serverCtx
     }

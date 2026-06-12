@@ -127,7 +127,7 @@ function LimitsGraph(props: { href: string }) {
       aria-label={i18n.t("go.graph.aria", { free: i18n.t("go.graph.free"), go: i18n.t("go.graph.go") })}
       data-visible={visible() ? "" : undefined}
       ref={root}
-      style={{ "--start": `${start}%` } as any}
+      style={{ "--start": `${start}%` } }
     >
       <div data-slot="plot">
         <svg

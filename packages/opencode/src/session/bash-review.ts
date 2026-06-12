@@ -4,6 +4,8 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { TaskPromptOps } from "@/tool/task"
 import type { Agent } from "@/agent/agent"
 import type { InstanceContext } from "@/project/instance-context"
+import { ModelV2 } from "@opencode-ai/core/model"
+import { ProviderV2 } from "@opencode-ai/core/provider"
 import { Effect } from "effect"
 import path from "path"
 import REVIEW_PROMPT from "./bash-review.txt"
@@ -80,7 +82,7 @@ function lastText(parts: readonly { type: string; text?: string }[]): string {
  */
 export const bashReview = Effect.fn("BashReview.run")(function* (
   args: Record<string, unknown>,
-  ctx: { sessionID: string; messages: readonly { info: { role: string }; parts: { type: string; text?: string }[] }[]; extra?: Record<string, unknown> },
+  ctx: { sessionID: string; messageID: string; messages: readonly { info: { role: string }; parts: { type: string; text?: string }[] }[]; extra?: Record<string, unknown> },
   input: {
     agent: Agent.Info
     session: Session.Info
@@ -107,21 +109,39 @@ export const bashReview = Effect.fn("BashReview.run")(function* (
     agent: input.agent.name,
   })
 
-  // 2. 渲染审核 prompt + 构造 Schema
+  // 2. 从父 assistant 消息继承模型（与 task 工具模式一致）
+  const parentMsg = ctx.messages.find((m) => {
+    const info = m as { info: { messageID?: string } }
+    return info.info.messageID === ctx.messageID
+  }) as { info: { modelID: string; providerID: string } } | undefined
+  const model = input.agent.model ?? (parentMsg
+    ? { modelID: ModelV2.ID.make(parentMsg.info.modelID), providerID: ProviderV2.ID.make(parentMsg.info.providerID) }
+    : undefined)
+
+  // 3. 渲染审核 prompt + 构造 Schema
   const reviewPrompt = renderPrompt(command, description, instanceCtx, userMessage, agentRationale)
   const verdictSchema = buildVerdictSchema()
 
-  // 3. 执行审核 prompt，使用 StructuredOutput 确保结构化回复
+  // 4. 执行审核 prompt，使用 StructuredOutput 确保结构化回复
   const result = yield* input.promptOps.prompt({
     sessionID: reviewSession.id,
     parts: [{ type: "text" as const, text: reviewPrompt }],
     format: new SessionV1.OutputFormatJsonSchema({ type: "json_schema", schema: verdictSchema }),
+    model,
     tools: { "*": false },
   })
 
-  // 4. 解析审核结论
-  const output = lastText((result).parts as { type: string; text?: string }[])
-  const verdict = parseVerdict(output)
+  // 4. 解析审核结论：优先从结构化输出读取，兜底从文本读取
+  const assistantInfo = result.info.role === "assistant" ? result.info : undefined
+  const structured = assistantInfo?.structured as { verdict?: string; reason?: string } | undefined
+  const textVerdict = parseVerdict(lastText(result.parts as { type: string; text?: string }[]))
+  const verdict = structured
+    ? structured.verdict === "safe"
+      ? { verdict: "safe" as const, reason: "" }
+      : structured.verdict === "unsafe"
+        ? { verdict: "unsafe" as const, reason: structured.reason ?? "未提供原因" }
+        : textVerdict
+    : textVerdict
 
   if (!verdict) {
     return {
