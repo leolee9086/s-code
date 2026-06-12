@@ -103,7 +103,7 @@ Note:
       return `No code results found for "${query}" in ${owner}/${repo}${pathFilter ? ` under ${pathFilter}` : ""}`
     }
 
-    const items = result.items as any[]
+    const items = result.items
     const shown = items.slice(0, effectiveMax)
 
     // Fetch text_matches (code snippets with context) for each result

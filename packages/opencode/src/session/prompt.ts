@@ -1831,10 +1831,10 @@ export const layer = Layer.effect(
             //   - auto_plan 已启用且 context >= threshold → 无需再注入，退出
             //   - auto_plan 已禁用 → 无合成消息阻塞退出条件，直接退出
             // 上下文不足时保持循环，auto_plan 会继续注入驱动模型收集信息。
-            if (!isForeverMode() && !isEvolveMode()) {
+      /*      if (!isForeverMode() && !isEvolveMode()) {
               const assistantFinished = handle.message.finish && !["tool-calls", "unknown"].includes(handle.message.finish)
               if (assistantFinished && (autoPlanContextSufficient || !autoPlanEnabled)) return "break" as const
-            }
+            }*/
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,

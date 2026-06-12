@@ -1,4 +1,6 @@
 import { Session } from "./session"
+import { SessionID } from "./schema"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { TaskPromptOps } from "@/tool/task"
 import type { Agent } from "@/agent/agent"
 import type { InstanceContext } from "@/project/instance-context"
@@ -36,22 +38,22 @@ function parseVerdict(output: string): { verdict: "safe" | "unsafe"; reason: str
 /**
  * 构造 StructuredOutput 的 JSON Schema。
  */
-function buildVerdictSchema(): Record<string, unknown> {
+function buildVerdictSchema() {
   return {
-    type: "object",
+    type: "object" as const,
     properties: {
       verdict: {
-        type: "string",
-        enum: ["safe", "unsafe"],
+        type: "string" as const,
+        enum: ["safe", "unsafe"] as const,
         description: "审核结论：safe=安全放行, unsafe=危险命令",
       },
       reason: {
-        type: "string",
+        type: "string" as const,
         description: "当 verdict 为 unsafe 时，必须填写具体原因说明违反了哪条安全规则",
       },
     },
-    required: ["verdict"],
-  }
+    required: ["verdict"] as const,
+  } as const
 }
 
 /**
@@ -100,7 +102,7 @@ export const bashReview = Effect.fn("BashReview.run")(function* (
 
   // 1. 创建审核子 session
   const reviewSession = yield* sessionSvc.create({
-    parentID: ctx.sessionID as any,
+    parentID: SessionID.make(ctx.sessionID),
     title: `bash review: ${(description || command).slice(0, 60)}`,
     agent: input.agent.name,
   })
@@ -113,12 +115,12 @@ export const bashReview = Effect.fn("BashReview.run")(function* (
   const result = yield* input.promptOps.prompt({
     sessionID: reviewSession.id,
     parts: [{ type: "text" as const, text: reviewPrompt }],
-    format: { type: "json_schema" as const, schema: verdictSchema },
+    format: new SessionV1.OutputFormatJsonSchema({ type: "json_schema", schema: verdictSchema }),
     tools: { "*": false },
   })
 
   // 4. 解析审核结论
-  const output = lastText((result as any).parts as { type: string; text?: string }[])
+  const output = lastText((result).parts as { type: string; text?: string }[])
   const verdict = parseVerdict(output)
 
   if (!verdict) {
