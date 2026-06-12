@@ -195,11 +195,16 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
 })
 
 function resolveTools(input: Pick<PrepareInput, "tools" | "agent" | "permission" | "user">) {
+  // 系统内部工具（如 StructuredOutput）不受用户权限过滤，
+  // 否则 bash review 传入 { "*": false } 会误将其禁用，导致审核无法输出结构化结果。
   const disabled = Permission.disabled(
     Object.keys(input.tools),
     Permission.merge(input.agent.permission, input.permission ?? []),
   )
-  return Record.filter(input.tools, (_, k) => input.user.tools?.[k] !== false && !disabled.has(k))
+  return Record.filter(input.tools, (_, k) => {
+    if (k === "StructuredOutput") return true
+    return input.user.tools?.[k] !== false && !disabled.has(k)
+  })
 }
 
 export function hasToolCalls(messages: ModelMessage[]): boolean {

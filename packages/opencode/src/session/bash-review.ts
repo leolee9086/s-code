@@ -1,14 +1,13 @@
 import { Session } from "./session"
 import { SessionID } from "./schema"
-import { SessionV1 } from "@opencode-ai/core/v1/session"
+
 import type { TaskPromptOps } from "@/tool/task"
 import type { Agent } from "@/agent/agent"
 import type { InstanceContext } from "@/project/instance-context"
-import { ModelV2 } from "@opencode-ai/core/model"
-import { ProviderV2 } from "@opencode-ai/core/provider"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import path from "path"
 import REVIEW_PROMPT from "./bash-review.txt"
+import { extractParentModel } from "./inherit-model"
 
 /**
  * 渲染审核 prompt 模板，填入上下文变量。
@@ -26,37 +25,18 @@ function renderPrompt(command: string, description: string, instanceCtx: Instanc
 
 /**
  * 从文本回复中解析审核结论。
- * 只匹配 SAFE 或 UNSAFE: 前缀格式。
+ * 匹配 SAFE: 或 UNSAFE: 前缀。
  */
 function parseVerdict(output: string): { verdict: "safe" | "unsafe"; reason: string } | undefined {
   const trimmed = output.trim()
-  if (/^SAFE$/im.test(trimmed)) return { verdict: "safe", reason: "" }
-  if (/^UNSAFE:/im.test(trimmed)) {
-    return { verdict: "unsafe", reason: trimmed.slice(7).trim() || "未提供原因" }
-  }
+  // 严格匹配 SAFE: 或 UNSAFE: 行首前缀（m 标志使 ^/$ 匹配行边界）
+  if (/^SAFE:\s*$/im.test(trimmed)) return { verdict: "safe", reason: "" }
+  const safeMatch = trimmed.match(/^SAFE:\s*(.+)$/im)
+  if (safeMatch) return { verdict: "safe", reason: safeMatch[1]?.trim() ?? "" }
+  const unsafeMatch = trimmed.match(/^UNSAFE:\s*(.+)$/im)
+  if (unsafeMatch) return { verdict: "unsafe", reason: unsafeMatch[1]?.trim() || "未提供原因" }
   return undefined
-}
-
-/**
- * 构造 StructuredOutput 的 JSON Schema。
- */
-function buildVerdictSchema() {
-  return {
-    type: "object" as const,
-    properties: {
-      verdict: {
-        type: "string" as const,
-        enum: ["safe", "unsafe"] as const,
-        description: "审核结论：safe=安全放行, unsafe=危险命令",
-      },
-      reason: {
-        type: "string" as const,
-        description: "当 verdict 为 unsafe 时，必须填写具体原因说明违反了哪条安全规则",
-      },
-    },
-    required: ["verdict"] as const,
-  } as const
-}
+} 
 
 /**
  * 从 assistant 消息的 parts 中提取最后一段文本内容。
@@ -73,9 +53,8 @@ function lastText(parts: readonly { type: string; text?: string }[]): string {
  * Bash 安全审核入口。
  *
  * 为待执行的 bash 命令创建一个独立的审核 session，
- * 使用 format=json_schema 注入 StructuredOutput 工具，
- * 审核模型通过该工具返回结构化审核结论。
- * 审核 session 中禁用所有注册工具，只有 StructuredOutput 可用。
+ * 通过纯文本 prompt 让模型输出 SAFE: / UNSAFE: 前缀结论。
+ * 不使用 json_schema + StructuredOutput 工具，兼容 thinking/reasoning 模型。
  *
  * 返回 undefined = 审核通过放行，
  * 返回 Tool.ExecuteResult 含 intercepted = 审核拦截。
@@ -110,38 +89,31 @@ export const bashReview = Effect.fn("BashReview.run")(function* (
   })
 
   // 2. 从父 assistant 消息继承模型（与 task 工具模式一致）
-  const parentMsg = ctx.messages.find((m) => {
-    const info = m as { info: { messageID?: string } }
-    return info.info.messageID === ctx.messageID
-  }) as { info: { modelID: string; providerID: string } } | undefined
-  const model = input.agent.model ?? (parentMsg
-    ? { modelID: ModelV2.ID.make(parentMsg.info.modelID), providerID: ProviderV2.ID.make(parentMsg.info.providerID) }
-    : undefined)
+  // 注意：不继承 variant（如 reasoning effort），因为部分模型在 thinking mode
+  // 下不支持 toolChoice: "required"（json_schema 格式所必需）。review session
+  // 需要的是同一模型的无 reasoning 配置以确保结构化输出可用。
+  const parentMsg = yield* sessionSvc.findMessage(
+    SessionID.make(ctx.sessionID),
+    (msg) => msg.info.id === ctx.messageID,
+  ).pipe(Effect.orDie)
+  const parentModel = Option.isSome(parentMsg) ? extractParentModel(parentMsg.value) : undefined
+  const usingAgentModel = !!input.agent.model
+  const model = usingAgentModel ? input.agent.model : parentModel
 
-  // 3. 渲染审核 prompt + 构造 Schema
+  // 3. 渲染审核 prompt
   const reviewPrompt = renderPrompt(command, description, instanceCtx, userMessage, agentRationale)
-  const verdictSchema = buildVerdictSchema()
 
-  // 4. 执行审核 prompt，使用 StructuredOutput 确保结构化回复
+  // 4. 执行审核 prompt（纯文本，模型输出 SAFE: / UNSAFE: 前缀）
+  // 不传 format/json_schema — 避免 toolChoice: "required"，兼容 thinking/reasoning 模型
   const result = yield* input.promptOps.prompt({
     sessionID: reviewSession.id,
     parts: [{ type: "text" as const, text: reviewPrompt }],
-    format: new SessionV1.OutputFormatJsonSchema({ type: "json_schema", schema: verdictSchema }),
-    model,
+    model: model ? { modelID: model.modelID, providerID: model.providerID } : undefined,
     tools: { "*": false },
   })
 
-  // 4. 解析审核结论：优先从结构化输出读取，兜底从文本读取
-  const assistantInfo = result.info.role === "assistant" ? result.info : undefined
-  const structured = assistantInfo?.structured as { verdict?: string; reason?: string } | undefined
-  const textVerdict = parseVerdict(lastText(result.parts as { type: string; text?: string }[]))
-  const verdict = structured
-    ? structured.verdict === "safe"
-      ? { verdict: "safe" as const, reason: "" }
-      : structured.verdict === "unsafe"
-        ? { verdict: "unsafe" as const, reason: structured.reason ?? "未提供原因" }
-        : textVerdict
-    : textVerdict
+  // 5. 解析审核结论
+  const verdict = parseVerdict(lastText(result.parts as { type: string; text?: string }[]))
 
   if (!verdict) {
     return {

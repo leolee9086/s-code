@@ -1571,8 +1571,10 @@ export const layer = Layer.effect(
             )
 
             if (lastUser.format?.type === "json_schema") {
+              // Schema.Json 包含 null，但在 type==="json_schema" 时始终为非 null 对象
+              const schema = lastUser.format.schema as Record<string, any>
               tools["StructuredOutput"] = createStructuredOutputTool({
-                schema: lastUser.format.schema,
+                schema,
                 onSuccess(output) {
                   structured = output
                 },
@@ -1645,7 +1647,7 @@ export const layer = Layer.effect(
             let autoPlanContextSufficient = false
             if (autoPlanEnabled && !session.parentID) {
               const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"]
-              const threshold = autoPlanCfg?.context_threshold ?? 0.3
+              const threshold = autoPlanCfg?.context_threshold ?? 0.30
               const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
               if (Option.isSome(usage) && usage.value && usage.value.percentage >= threshold) {
                 // 上下文占用已超过阈值，不注入 auto_plan，process 后退出循环
