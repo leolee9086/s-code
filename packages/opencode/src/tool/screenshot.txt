@@ -1,0 +1,24 @@
+截取屏幕截图，支持跨平台和多屏幕。
+
+功能：
+- 自动检测所有连接的屏幕，列出屏幕信息（索引、分辨率、位置）
+- 指定屏幕索引截图（从 0 开始）
+- 不传 screen 参数时显示所有屏幕供选择
+- 输出 PNG 或 JPG 格式
+- 文件保存到 .opencode/screenshots/ 目录
+
+使用场景：
+- 验证 UI 渲染效果
+- 调试视觉问题
+- 记录当前屏幕状态
+- 多屏幕调试（指定屏幕索引截图）
+
+注意：
+- Windows 需要 System.Drawing（已内置）
+- macOS 使用 screencapture（已内置）
+- Linux 需要 ImageMagick (import) 或 scrot
+
+使用示例：
+- screen: 0 → 截取主屏幕
+- screen: 1 → 截取第二屏幕
+- 不传参数 → 列出所有屏幕

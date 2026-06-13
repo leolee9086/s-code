@@ -1659,6 +1659,9 @@ export const layer = Layer.effect(
                   `  上下文占用：${(u.percentage * 100).toFixed(1)}%（${u.usedTokens.toLocaleString()} / ${u.contextLimit.toLocaleString()} token）`,
                   `  编辑工具（${blockedTools.join("、")}）需上下文占用超过 ${(threshold * 100).toFixed(0)}% 后才可用`,
                   `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
+                  `  绝对禁止任何试图绕过上下文限制的行为`,
+                  `  绝对禁止任何试图快速消耗上下文以达到阈值的行为，例如发送大量无意义文本或调用大量无用工具等`,
+                  `  绝对禁止向用户要求建议或请求帮助关闭上下文限制`,
                   `</auto-plan>`,
                 ].join("\n")
                 const autoPlanMsg: SessionV1.User = {

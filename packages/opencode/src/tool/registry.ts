@@ -3,22 +3,27 @@ import { Session } from "@/session/session"
 import { QuestionTool } from "./question"
 import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
+import { ReadTool } from "./read"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
-import { ReadTool } from "./read"
-import { TaskTool } from "./task"
-import { Database } from "@opencode-ai/core/database/database"
-import { TodoWriteTool } from "./todo"
-import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
-import { InvalidTool } from "./invalid"
+import { ApplyPatchTool } from "./apply_patch"
+import { WebFetchTool } from "./webfetch"
+import { WebSearchTool } from "./websearch"
+import { TodoWriteTool } from "./todo"
+import { TaskTool } from "./task"
 import { SkillTool } from "./skill"
+import { InvalidTool } from "./invalid"
 import { SessionQueryTool } from "./session_query"
 import { SessionMessageReadTool } from "./session_message_read"
 import { SpawnTool } from "./spawn"
 import { RelayMessageTool } from "./relay-message"
 import { SendChannelMessageTool } from "./send-channel-message"
 import { ListChannelsTool } from "./list-channels"
+import { ScreenshotTool } from "./screenshot"
+import { InstanceState } from "@/effect/instance-state"
+import type { InstanceContext } from "@/project/instance-context"
+import { Database } from "@opencode-ai/core/database/database"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
@@ -28,11 +33,9 @@ import z from "zod"
 import { Plugin } from "../plugin"
 import { Provider } from "@/provider/provider"
 
-import { WebSearchTool } from "./websearch"
 import * as Log from "@opencode-ai/core/util/log"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
-import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "@opencode-ai/core/util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -42,7 +45,6 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Ripgrep } from "@opencode-ai/core/filesystem/ripgrep"
 import { Format } from "../format"
-import { InstanceState } from "@/effect/instance-state"
 import { EffectBridge } from "@/effect/bridge"
 import { Question } from "../question"
 import { Todo } from "../session/todo"
@@ -146,10 +148,11 @@ export const layer: Layer.Layer<
     const relayMsg = yield* RelayMessageTool
     const sendChannelMsg = yield* SendChannelMessageTool
     const listChannels = yield* ListChannelsTool
+    const screenshot = yield* ScreenshotTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
-      Effect.fn("ToolRegistry.state")(function* (ctx) {
+      (ctx: InstanceContext) => Effect.gen(function* () {
         const custom: Tool.Def[] = []
 
         function fromPlugin(id: string, def: ToolDefinition, sourcePath?: string): Tool.Def {
@@ -260,6 +263,7 @@ export const layer: Layer.Layer<
           relay_message: Tool.init(relayMsg),
           send_channel_message: Tool.init(sendChannelMsg),
           list_channels: Tool.init(listChannels),
+          screenshot: Tool.init(screenshot),
         })
 
         return {
@@ -287,11 +291,12 @@ export const layer: Layer.Layer<
             tool.relay_message,
             tool.send_channel_message,
             tool.list_channels,
+            tool.screenshot,
           ],
           task: tool.task,
           read: tool.read,
         }
-      }),
+      })
     )
 
     const all: Interface["all"] = Effect.fn("ToolRegistry.all")(function* () {
@@ -394,8 +399,8 @@ export const layer: Layer.Layer<
     })
 
     return Service.of({ ids, all, named, tools })
-  }),
-)
+    })
+  )
 
 export const defaultLayer = Layer.suspend(() =>
   layer
