@@ -2252,12 +2252,58 @@ function WebFetch(props: ToolProps<typeof WebFetchTool>) {
 }
 
 function WebSearch(props: ToolProps<typeof WebSearchTool>) {
-  const metadata = () => props.metadata as { numResults?: number; provider?: unknown }
+  const { theme } = useTheme()
+  const metadata = () => props.metadata as {
+    numResults?: number
+    provider?: unknown
+    searchProgress?: string
+    currentEngine?: string
+    partialCount?: number
+    latestResults?: Array<{ title: string; url: string; engine: string }>
+  }
+  const isRunning = createMemo(() => props.part.state.status === "running")
+  // 运行态标题由后端 ctx.metadata() 实时更新（如「搜索中 2/5 (brave) · 已得 3 条」）
+  const runningTitle = createMemo(() => {
+    if (props.part.state.status !== "running") return undefined
+    return props.part.state.title
+  })
+  const latestResults = createMemo(() => {
+    const value = metadata().latestResults
+    if (!value || !Array.isArray(value)) return []
+    return value.filter(
+      (r): r is { title: string; url: string; engine: string } =>
+        !!r && typeof r === "object" && typeof r.title === "string",
+    )
+  })
   return (
-    <InlineTool icon="◈" pending="Searching web..." complete={props.input.query} part={props.part}>
-      {webSearchProviderLabel(metadata().provider)} "{props.input.query}"{" "}
-      <Show when={metadata().numResults}>({metadata().numResults} results)</Show>
-    </InlineTool>
+    <>
+      <InlineTool
+        icon="◈"
+        pending="Searching web..."
+        // 运行中强制未完成 → 显示 spinner，而非立即渲染「完成」分支
+        complete={isRunning() ? false : props.input.query}
+        spinner={isRunning()}
+        part={props.part}
+      >
+        {isRunning() && runningTitle() ? (
+          runningTitle()
+        ) : (
+          <>
+            {webSearchProviderLabel(metadata().provider)} "{props.input.query}"{" "}
+            <Show when={metadata().numResults}>({metadata().numResults} results)</Show>
+          </>
+        )}
+      </InlineTool>
+      <For each={latestResults()}>
+        {(result, index) => (
+          <box id={`tool-inline-search-${props.part.id}-${index()}`} paddingLeft={3}>
+            <text paddingLeft={3} fg={theme.textMuted}>
+              ↳ [{result.engine}] {result.title}
+            </text>
+          </box>
+        )}
+      </For>
+    </>
   )
 }
 

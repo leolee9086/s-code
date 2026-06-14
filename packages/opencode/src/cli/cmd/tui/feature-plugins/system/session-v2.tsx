@@ -835,25 +835,56 @@ function WebFetch(props: ToolProps) {
 }
 
 function WebSearch(props: ToolProps) {
+  const { theme } = useTheme()
   const label = createMemo(() => webSearchProviderLabel(props.metadata.provider))
   const query = createMemo(() => stringValue(props.input.query) ?? "")
   const output = createMemo(() => (props.output ?? "").trim())
+  // V2 运行态结构化字段（由 Tool.Progress 事件写入 sync-v2.tsx）
+  const structured = createMemo(() => {
+    if (props.part.state.status !== "running") return undefined
+    return props.part.state.structured as {
+      searchProgress?: string
+      phase?: string
+      currentEngine?: string
+      partialCount?: number
+      latestResults?: Array<{ title: string; url: string; engine: string }>
+    } | undefined
+  })
+  const latestResults = createMemo(() => structured()?.latestResults ?? [])
   return (
-    <Switch>
-      <Match when={output()}>
-        <BlockTool
-          title={`# ${label()}: ${query()}`}
-          part={props.part}
-        >
-          <text>{output()}</text>
-        </BlockTool>
-      </Match>
-      <Match when={true}>
-        <InlineTool icon="◈" pending="Searching web..." complete={toolComplete(props.part)} part={props.part}>
-          {label()} "{query() || pendingInput(props.part)}"
-        </InlineTool>
-      </Match>
-    </Switch>
+    <>
+      <Switch>
+        <Match when={output()}>
+          <BlockTool title={`# ${label()}: ${query()}`} part={props.part}>
+            <text>{output()}</text>
+          </BlockTool>
+        </Match>
+        <Match when={true}>
+          <InlineTool
+            icon="◈"
+            pending="Searching web..."
+            // 运行中显示 spinner：toolComplete 在 running 时返回 true 会掩盖 spinner，
+            // 因此显式传 spinner，并让 complete 仅在非运行时为真
+            complete={props.part.state.status === "running" ? false : toolComplete(props.part)}
+            spinner={props.part.state.status === "running"}
+            part={props.part}
+          >
+            {props.part.state.status === "running" && structured()?.searchProgress
+              ? `搜索中 ${structured()!.searchProgress}${structured()!.currentEngine ? ` (${structured()!.currentEngine})` : ""}${typeof structured()!.partialCount === "number" ? ` · 已得 ${structured()!.partialCount} 条` : ""}`
+              : `${label()} "${query() || pendingInput(props.part)}"`}
+          </InlineTool>
+        </Match>
+      </Switch>
+      <For each={latestResults()}>
+        {(result, index) => (
+          <box paddingLeft={3} flexShrink={0}>
+            <text paddingLeft={3} fg={theme.textMuted}>
+              ↳ [{result.engine}] {result.title}
+            </text>
+          </box>
+        )}
+      </For>
+    </>
   )
 }
 

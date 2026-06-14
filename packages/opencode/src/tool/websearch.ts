@@ -7,6 +7,17 @@ import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Search } from "@/search"
 import { getGlobalRateLimiter } from "@/search/rate-limiter"
+import type { ProgressCallback } from "@/search/executor"
+
+/** 传给前端的逐条结果预览（精简字段，避免 payload 过大） */
+export interface LatestResultPreview {
+  title: string
+  url: string
+  engine: string
+}
+
+/** 最多携带多少条最新结果给前端预览 */
+const MAX_PREVIEW_RESULTS = 5
 
 export const Parameters = Schema.Struct({
   query: Schema.String.annotate({ description: "网络搜索查询词" }),
@@ -108,7 +119,7 @@ function callMultiEngine(
   http: HttpClient.HttpClient,
   params: Schema.Schema.Type<typeof Parameters>,
   flags: { exa: boolean; parallel: boolean },
-  onProgress?: (done: number, total: number, current: string, partialResults: readonly import("@/search/engine").SearchResult[]) => Effect.Effect<void>,
+  onProgress?: ProgressCallback,
 ): Effect.Effect<{ output: string | undefined; engines: readonly string[]; engineStatus?: string; rateLimitInfo?: string }> {
   return Effect.gen(function* () {
     // 自动检测查询意图（覆盖 queryType），用户显式指定的优先
@@ -197,7 +208,7 @@ function callProvider(
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
   ctx: Tool.Context,
-  onProgress?: (done: number, total: number, current: string, partialResults: readonly import("@/search/engine").SearchResult[]) => Effect.Effect<void>,
+  onProgress?: ProgressCallback,
 ): Effect.Effect<{ output: string | undefined; engines: readonly string[]; metadata?: Record<string, unknown> }> {
   if (provider === "duckduckgo") {
     // DuckDuckGo → 多引擎聚合模式（DuckDuckGo + Brave 等并行搜索）
@@ -215,52 +226,85 @@ function callProvider(
   }
 
   if (provider === "parallel") {
-    return McpWebSearch.call(
-      http,
-      McpWebSearch.PARALLEL_URL,
-      "web_search",
-      McpWebSearch.ParallelSearchArgs,
-      {
-        objective: params.query,
-        search_queries: [params.query],
-        session_id: ctx.sessionID,
-        model_name: webSearchModelName(ctx.extra),
-      },
-      "25 seconds",
-      parallelAuthHeaders(),
-    ).pipe(
-      Effect.map((output) => ({ output, engines: ["parallel"] as readonly string[] })),
-      Effect.catch((err: unknown) =>
-        Effect.succeed({
-          output: `Parallel 搜索失败: ${err instanceof Error ? err.message : String(err)}`,
-          engines: [] as readonly string[],
-        }),
-      ),
-    )
+    return Effect.gen(function* () {
+      // 单引擎 HTTP 调用无中间结果，仅发 start 相位避免前端静默
+      yield* onProgress?.({
+        done: 0,
+        total: 1,
+        current: "parallel",
+        phase: "start",
+        partialResults: [],
+        newResults: [],
+      }) ?? Effect.void
+      const output = yield* McpWebSearch.call(
+        http,
+        McpWebSearch.PARALLEL_URL,
+        "web_search",
+        McpWebSearch.ParallelSearchArgs,
+        {
+          objective: params.query,
+          search_queries: [params.query],
+          session_id: ctx.sessionID,
+          model_name: webSearchModelName(ctx.extra),
+        },
+        "25 seconds",
+        parallelAuthHeaders(),
+      ).pipe(
+        Effect.map((o) => o),
+        Effect.catch((err: unknown) =>
+          Effect.succeed(`Parallel 搜索失败: ${err instanceof Error ? err.message : String(err)}`),
+        ),
+      )
+      yield* onProgress?.({
+        done: 1,
+        total: 1,
+        current: "parallel",
+        phase: "done",
+        partialResults: [],
+        newResults: [],
+      }) ?? Effect.void
+      return { output, engines: ["parallel"] as readonly string[] }
+    })
   }
 
-  return McpWebSearch.call(
-    http,
-    McpWebSearch.EXA_URL,
-    "web_search_exa",
-    McpWebSearch.SearchArgs,
-    {
-      query: params.query,
-      type: params.type || "auto",
-      numResults: params.numResults || 8,
-      livecrawl: params.livecrawl || "fallback",
-      contextMaxCharacters: params.contextMaxCharacters,
-    },
-    "25 seconds",
-  ).pipe(
-    Effect.map((output) => ({ output, engines: ["exa"] as readonly string[] })),
-    Effect.catch((err: unknown) =>
-      Effect.succeed({
-        output: `Exa 搜索失败: ${err instanceof Error ? err.message : String(err)}`,
-        engines: [] as readonly string[],
-      }),
-    ),
-  )
+  return Effect.gen(function* () {
+    yield* onProgress?.({
+      done: 0,
+      total: 1,
+      current: "exa",
+      phase: "start",
+      partialResults: [],
+      newResults: [],
+    }) ?? Effect.void
+    const output = yield* McpWebSearch.call(
+      http,
+      McpWebSearch.EXA_URL,
+      "web_search_exa",
+      McpWebSearch.SearchArgs,
+      {
+        query: params.query,
+        type: params.type || "auto",
+        numResults: params.numResults || 8,
+        livecrawl: params.livecrawl || "fallback",
+        contextMaxCharacters: params.contextMaxCharacters,
+      },
+      "25 seconds",
+    ).pipe(
+      Effect.map((o) => o),
+      Effect.catch((err: unknown) =>
+        Effect.succeed(`Exa 搜索失败: ${err instanceof Error ? err.message : String(err)}`),
+      ),
+    )
+    yield* onProgress?.({
+      done: 1,
+      total: 1,
+      current: "exa",
+      phase: "done",
+      partialResults: [],
+      newResults: [],
+    }) ?? Effect.void
+    return { output, engines: ["exa"] as readonly string[] }
+  })
 }
 
 export const WebSearchTool = Tool.define(
@@ -281,7 +325,7 @@ export const WebSearchTool = Tool.define(
             parallel: flags.enableParallel,
           })
           const title = webSearchProviderLabel(provider)
-          yield* ctx.metadata({ title: `正在搜索 "${params.query}"`, metadata: { provider, searchProgress: "starting" } })
+          yield* ctx.metadata({ title: `正在搜索 "${params.query}"`, metadata: { provider, searchProgress: "starting", phase: "start", currentEngine: "", partialCount: 0, latestResults: [] as LatestResultPreview[] } })
 
           yield* ctx.ask({
             permission: "websearch",
@@ -306,12 +350,37 @@ export const WebSearchTool = Tool.define(
             }
           }
 
-          // 进度回调 — ctx.metadata() 已自动发布 Tool.Progress 到 V2 TUI
-          const onProgress: (done: number, total: number, current: string, partial: readonly import("@/search/engine").SearchResult[]) => Effect.Effect<void> = (done, total, current, partial) =>
-            ctx.metadata({
-              title: `搜索中 ${done}/${total} (${current})${partial.length > 0 ? ` · ${partial.length} 条` : ""}`,
-              metadata: { searchProgress: `${done}/${total}`, currentEngine: current, provider, partialCount: partial.length },
+          // 进度回调 — ctx.metadata() 已自动发布 Tool.Progress 到 V2 TUI。
+          // 适配 executor 的新 ProgressInfo 契约：根据相位生成前端标题 + 携带逐条结果预览。
+          const onProgress: ProgressCallback = (info) => {
+            const latestResults: LatestResultPreview[] = info.partialResults
+              .slice(-MAX_PREVIEW_RESULTS)
+              .reverse()
+              .map((r) => ({ title: r.title, url: r.url, engine: r.engine }))
+            let title: string
+            switch (info.phase) {
+              case "start":
+                title = `正在查询 ${info.current} (${info.done}/${info.total})${info.partialResults.length > 0 ? ` · 已得 ${info.partialResults.length} 条` : ""}`
+                break
+              case "result":
+                title = `搜索中 ${info.done}/${info.total} (${info.current}) · 已得 ${info.partialResults.length} 条`
+                break
+              case "done":
+                title = `搜索中 ${info.done}/${info.total} (${info.current}) · 已得 ${info.partialResults.length} 条`
+                break
+            }
+            return ctx.metadata({
+              title,
+              metadata: {
+                searchProgress: `${info.done}/${info.total}`,
+                phase: info.phase,
+                currentEngine: info.current,
+                provider,
+                partialCount: info.partialResults.length,
+                latestResults,
+              },
             })
+          }
 
           const result = yield* callProvider(http, provider, params, ctx, onProgress).pipe(
             Effect.catch((err: unknown) =>

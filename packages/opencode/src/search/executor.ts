@@ -43,6 +43,28 @@ type EngineOutcome =
   | { _tag: "success"; results: readonly SearchResult[] }
   | { _tag: "error"; error: EngineError }
 
+/** 进度相位：引擎开始 / 新增结果 / 引擎完成 */
+export type ProgressPhase = "start" | "result" | "done"
+
+/** 进度回调携带的信息 */
+export interface ProgressInfo {
+  /** 已完成的引擎数（start 时不计入） */
+  done: number
+  /** 活跃引擎总数 */
+  total: number
+  /** 当前引擎名 */
+  current: string
+  /** 相位 */
+  phase: ProgressPhase
+  /** 累计结果（所有引擎已返回的去重前原始结果） */
+  partialResults: readonly SearchResult[]
+  /** 本次新增的结果（phase=start 时为空数组） */
+  newResults: readonly SearchResult[]
+}
+
+/** 进度回调类型。返回 Effect<void> 以便集成到 Effect 流中。 */
+export type ProgressCallback = (info: ProgressInfo) => Effect.Effect<void> | undefined | void
+
 /**
  * 并发执行多个搜索引擎
  *
@@ -61,7 +83,7 @@ export function executeAll(
   query: string,
   opts: SearchOptions,
   state: ExecutorState,
-  onProgress?: (done: number, total: number, current: string, partialResults: readonly SearchResult[]) => Effect.Effect<void>,
+  onProgress?: ProgressCallback,
 ): Effect.Effect<ExecuteResult, never, never> {
   return Effect.gen(function* () {
     // 过滤暂停中的引擎（熔断器恢复检测）
@@ -82,19 +104,49 @@ export function executeAll(
     const done = { value: 0 }
     const partialResults = { all: [] as SearchResult[] }
 
+    // 引擎开始时发一次 start 相位，让前端立刻看到「正在查询 X...」
+    const emitStart = (engineName: string) => {
+      onProgress?.({
+        done: done.value,
+        total,
+        current: engineName,
+        phase: "start",
+        partialResults: partialResults.all,
+        newResults: [],
+      })
+    }
+
     const outcomes = yield* Effect.forEach(
       active,
       (engine) =>
-        executeEngineSafely(engine, http, query, opts, state).pipe(
-          Effect.tap((outcome) =>
-            Effect.sync(() => {
-              done.value++
-              if (outcome._tag === "success") partialResults.all.push(...outcome.results)
-            }).pipe(
-              Effect.flatMap(() => onProgress?.(done.value, total, engine.name, partialResults.all) ?? Effect.void),
-            ),
-          ),
-        ),
+        Effect.gen(function* () {
+          emitStart(engine.name)
+          const outcome = yield* executeEngineSafely(engine, http, query, opts, state)
+          if (outcome._tag === "success" && outcome.results.length > 0) {
+            // 引擎成功后，一次性把该引擎全部结果 push，并发一次 result 相位。
+            // （按引擎粒度而非逐条，避免高基数结果导致 Tool.Progress 事件洪流。）
+            partialResults.all.push(...outcome.results)
+            yield* onProgress?.({
+              done: done.value,
+              total,
+              current: engine.name,
+              phase: "result",
+              partialResults: partialResults.all,
+              newResults: outcome.results,
+            }) ?? Effect.void
+          }
+          done.value++
+          // 引擎完成相位（含失败引擎，便于前端显示进度计数）
+          yield* onProgress?.({
+            done: done.value,
+            total,
+            current: engine.name,
+            phase: "done",
+            partialResults: partialResults.all,
+            newResults: outcome._tag === "success" ? outcome.results : [],
+          }) ?? Effect.void
+          return outcome
+        }),
       { concurrency: MAX_CONCURRENCY },
     )
 
