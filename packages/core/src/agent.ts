@@ -11,6 +11,7 @@ import { State } from "./state"
 export const ID = Schema.String.pipe(Schema.brand("AgentV2.ID"))
 export type ID = typeof ID.Type
 export const defaultID = ID.make("build")
+export const planID = ID.make("plan")
 
 export const Color = Schema.Union([
   Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/)),

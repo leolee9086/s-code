@@ -1,6 +1,7 @@
 import path from "path"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Effect } from "effect"
+import { AgentV2 } from "@opencode-ai/core/agent"
 import { Agent } from "@/agent/agent"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
@@ -24,7 +25,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   if (!userMessage) return input.messages
 
   if (!flags.experimentalPlanMode) {
-    if (input.agent.name === "plan") {
+    if (input.agent.name === AgentV2.planID) {
       userMessage.parts.push({
         id: PartID.ascending(),
         messageID: userMessage.info.id,
@@ -34,8 +35,8 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
         synthetic: true,
       })
     }
-    const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
-    if (wasPlan && input.agent.name === "build") {
+    const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === AgentV2.planID)
+    if (wasPlan && input.agent.name === AgentV2.defaultID) {
       userMessage.parts.push({
         id: PartID.ascending(),
         messageID: userMessage.info.id,
@@ -49,7 +50,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   }
 
   const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
-  if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {
+  if (input.agent.name !== AgentV2.planID && assistantMessage?.info.agent === AgentV2.planID) {
     const ctx = yield* InstanceState.context
     const plan = Session.plan(input.session, ctx)
     const exists = yield* fsys.existsSafe(plan)
@@ -67,7 +68,7 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     return input.messages
   }
 
-  if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") return input.messages
+  if (input.agent.name !== AgentV2.planID || assistantMessage?.info.agent === AgentV2.planID) return input.messages
 
   const ctx = yield* InstanceState.context
   const plan = Session.plan(input.session, ctx)

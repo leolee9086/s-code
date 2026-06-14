@@ -135,7 +135,7 @@ export const Plugin = PluginV2.define({
         )
       })
 
-      editor.update(AgentV2.ID.make("plan"), (item) => {
+      editor.update(AgentV2.planID, (item) => {
         item.description = "Plan mode. Disallows all edit tools."
         item.mode = "primary"
         item.permissions.push(
