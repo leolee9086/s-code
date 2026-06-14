@@ -17,8 +17,9 @@ export async function GET(input: APIEvent) {
     if (result.err) throw new Error(result.err.message)
     const decoded = AuthClient.decode(result.tokens.access, {} )
     if (decoded.err) throw new Error(decoded.err.message)
+    const props = (decoded.subject as { properties: { accountID: string; email: string } }).properties
     const session = await useAuthSession()
-    const id = decoded.subject.properties.accountID
+    const id = props.accountID
     await session.update((value) => {
       return {
         ...value,
@@ -26,7 +27,7 @@ export async function GET(input: APIEvent) {
           ...value.account,
           [id]: {
             id,
-            email: decoded.subject.properties.email,
+            email: props.email,
           },
         },
         current: id,

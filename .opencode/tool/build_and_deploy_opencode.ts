@@ -90,22 +90,24 @@ export default tool({
         return `构建失败（已尝试系统代理，${process.env.HTTPS_PROXY}）:\n${e2.stderr?.toString() ?? e2.message ?? String(e2)}`
       }
     }
-
+  
     const exists = await fs.stat(builtPath).then(() => true).catch(() => false)
     if (!exists) {
       return `构建失败：未找到输出文件 ${builtPath}\n${buildResult.text()}`
     }
-
-    const backupPath = globalPath + ".bak"
-    try {
-      await fs.rename(globalPath, backupPath)
-    } catch {
-      try { await fs.unlink(backupPath).catch(() => {}) } catch {}
-    }
-
+  
+    // 先删除原文件（Windows 允许删除正在运行的 .exe），避免 rename + copy 的跨盘符问题
+    await fs.unlink(globalPath).catch(() => {})
+  
+    // 直接复制，不经过 rename（同一盘符或跨盘符均可）
     await fs.copyFile(builtPath, globalPath)
-
-    try { await fs.unlink(backupPath).catch(() => {}) } catch {}
+  
+    // 校验：确认复制后的文件大小一致
+    const actualSize = await fs.stat(globalPath).then(s => s.size).catch(() => 0)
+    const expectedSize = await fs.stat(builtPath).then(s => s.size).catch(() => 0)
+    if (actualSize !== expectedSize) {
+      return `部署失败：文件大小不匹配！\n构建输出 (${builtPath})：${expectedSize} 字节\n部署位置 (${globalPath})：${actualSize} 字节`
+    }
 
     const { version } = JSON.parse(
       await Bun.file(path.join(pkgDir, "package.json")).text(),
