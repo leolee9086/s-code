@@ -2253,6 +2253,7 @@ function WebFetch(props: ToolProps<typeof WebFetchTool>) {
 
 function WebSearch(props: ToolProps<typeof WebSearchTool>) {
   const { theme } = useTheme()
+  const ctx = use()
   const metadata = () => props.metadata as {
     numResults?: number
     provider?: unknown
@@ -2275,34 +2276,65 @@ function WebSearch(props: ToolProps<typeof WebSearchTool>) {
         !!r && typeof r === "object" && typeof r.title === "string",
     )
   })
+  // 完成态：用 BlockTool 展开显示完整搜索结果输出
+  const output = createMemo(() => (props.output ?? "").trim())
+  const [expanded, setExpanded] = createSignal(false)
+  // 较高的上限，让常见搜索结果（约 10-12 条）默认全部展开，只有极长时才需点击展开
+  const maxLines = 50
+  const maxChars = createMemo(() => maxLines * Math.max(20, ctx.width - 6))
+  const collapsed = createMemo(() => collapseToolOutput(output(), maxLines, maxChars()))
+  const limited = createMemo(() => {
+    if (expanded() || !collapsed().overflow) return output()
+    return collapsed().output
+  })
+  const title = createMemo(() => `# ${webSearchProviderLabel(metadata().provider)}: ${props.input.query}`)
   return (
     <>
-      <InlineTool
-        icon="◈"
-        pending="Searching web..."
-        // 运行中强制未完成 → 显示 spinner，而非立即渲染「完成」分支
-        complete={isRunning() ? false : props.input.query}
-        spinner={isRunning()}
-        part={props.part}
-      >
-        {isRunning() && runningTitle() ? (
-          runningTitle()
-        ) : (
-          <>
-            {webSearchProviderLabel(metadata().provider)} "{props.input.query}"{" "}
-            <Show when={metadata().numResults}>({metadata().numResults} results)</Show>
-          </>
-        )}
-      </InlineTool>
-      <For each={latestResults()}>
-        {(result, index) => (
-          <box id={`tool-inline-search-${props.part.id}-${index()}`} paddingLeft={3}>
-            <text paddingLeft={3} fg={theme.textMuted}>
-              ↳ [{result.engine}] {result.title}
-            </text>
-          </box>
-        )}
-      </For>
+      <Switch>
+        <Match when={output() && !isRunning()}>
+          <BlockTool
+            title={title()}
+            part={props.part}
+            onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
+          >
+            <text fg={theme.text}>{limited()}</text>
+            <Show when={collapsed().overflow}>
+              <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+            </Show>
+          </BlockTool>
+        </Match>
+        <Match when={true}>
+          <InlineTool
+            icon="◈"
+            pending="Searching web..."
+            // 运行中强制未完成 → 显示 spinner，而非立即渲染「完成」分支
+            complete={isRunning() ? false : props.input.query}
+            spinner={isRunning()}
+            part={props.part}
+          >
+            {isRunning() && runningTitle() ? (
+              runningTitle()
+            ) : (
+              <>
+                {webSearchProviderLabel(metadata().provider)} "{props.input.query}"{" "}
+                <Show when={metadata().numResults}>({metadata().numResults} results)</Show>
+              </>
+            )}
+          </InlineTool>
+        </Match>
+      </Switch>
+      {/* 运行中逐条结果预览（完成后不再显示，由 BlockTool 展示完整输出） */}
+      <Show when={isRunning()}>
+        <For each={latestResults()}>
+          {(result, index) => (
+            <box id={`tool-inline-search-${props.part.id}-${index()}`} paddingLeft={3}>
+              <text paddingLeft={3} fg={theme.textMuted}>
+                ↳ [{result.engine}] {result.title}
+              </text>
+            </box>
+          )}
+        </For>
+      </Show>
     </>
   )
 }

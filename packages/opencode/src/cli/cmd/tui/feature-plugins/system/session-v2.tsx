@@ -836,9 +836,11 @@ function WebFetch(props: ToolProps) {
 
 function WebSearch(props: ToolProps) {
   const { theme } = useTheme()
+  const dimensions = useTerminalDimensions()
   const label = createMemo(() => webSearchProviderLabel(props.metadata.provider))
   const query = createMemo(() => stringValue(props.input.query) ?? "")
   const output = createMemo(() => (props.output ?? "").trim())
+  const isRunning = createMemo(() => props.part.state.status === "running")
   // V2 运行态结构化字段（由 Tool.Progress 事件写入 sync-v2.tsx）
   const structured = createMemo(() => {
     if (props.part.state.status !== "running") return undefined
@@ -851,12 +853,28 @@ function WebSearch(props: ToolProps) {
     } | undefined
   })
   const latestResults = createMemo(() => structured()?.latestResults ?? [])
+  // 完成态展开显示，maxLines=50，极长时可点击展开/折叠
+  const [expanded, setExpanded] = createSignal(false)
+  const maxLines = 50
+  const maxChars = createMemo(() => maxLines * Math.max(20, dimensions().width - 6))
+  const collapsed = createMemo(() => collapseToolOutput(output(), maxLines, maxChars()))
+  const limited = createMemo(() => {
+    if (expanded() || !collapsed().overflow) return output()
+    return collapsed().output
+  })
   return (
     <>
       <Switch>
         <Match when={output()}>
-          <BlockTool title={`# ${label()}: ${query()}`} part={props.part}>
-            <text>{output()}</text>
+          <BlockTool
+            title={`# ${label()}: ${query()}`}
+            part={props.part}
+            onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
+          >
+            <text>{limited()}</text>
+            <Show when={collapsed().overflow}>
+              <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+            </Show>
           </BlockTool>
         </Match>
         <Match when={true}>
@@ -865,25 +883,28 @@ function WebSearch(props: ToolProps) {
             pending="Searching web..."
             // 运行中显示 spinner：toolComplete 在 running 时返回 true 会掩盖 spinner，
             // 因此显式传 spinner，并让 complete 仅在非运行时为真
-            complete={props.part.state.status === "running" ? false : toolComplete(props.part)}
-            spinner={props.part.state.status === "running"}
+            complete={isRunning() ? false : toolComplete(props.part)}
+            spinner={isRunning()}
             part={props.part}
           >
-            {props.part.state.status === "running" && structured()?.searchProgress
+            {isRunning() && structured()?.searchProgress
               ? `搜索中 ${structured()!.searchProgress}${structured()!.currentEngine ? ` (${structured()!.currentEngine})` : ""}${typeof structured()!.partialCount === "number" ? ` · 已得 ${structured()!.partialCount} 条` : ""}`
               : `${label()} "${query() || pendingInput(props.part)}"`}
           </InlineTool>
         </Match>
       </Switch>
-      <For each={latestResults()}>
-        {(result, index) => (
-          <box paddingLeft={3} flexShrink={0}>
-            <text paddingLeft={3} fg={theme.textMuted}>
-              ↳ [{result.engine}] {result.title}
-            </text>
-          </box>
-        )}
-      </For>
+      {/* 运行中逐条结果预览（完成后由 BlockTool 展示完整输出） */}
+      <Show when={isRunning()}>
+        <For each={latestResults()}>
+          {(result, index) => (
+            <box paddingLeft={3} flexShrink={0}>
+              <text paddingLeft={3} fg={theme.textMuted}>
+                ↳ [{result.engine}] {result.title}
+              </text>
+            </box>
+          )}
+        </For>
+      </Show>
     </>
   )
 }
