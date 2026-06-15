@@ -47,7 +47,7 @@ export function provider(model: Provider.Model) {
 export interface Interface {
   readonly environment: (model: Provider.Model, sessionID?: SessionID) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
-  readonly scripts: () => Effect.Effect<string | undefined>
+  readonly custom_tools: () => Effect.Effect<string | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SystemPrompt") {}
@@ -268,26 +268,27 @@ export const layer = Layer.effect(
         ].join("\n")
       }),
 
-      scripts: Effect.fn("SystemPrompt.scripts")(function* () {
+      custom_tools: Effect.fn("SystemPrompt.custom_tools")(function* () {
         const ctx = yield* InstanceState.context
-        const scriptsDir = path.join(ctx.worktree, ".opencode", "scripts")
+        const toolDir = path.join(ctx.worktree, ".opencode", "tool")
 
         // 读目录（允许失败）
         let entries: fs.Dirent[]
         try {
           entries = yield* Effect.promise(() =>
-            fs.promises.readdir(scriptsDir, { withFileTypes: true }),
+            fs.promises.readdir(toolDir, { withFileTypes: true }),
           )
         } catch {
           return undefined
         }
 
-        // 过滤 .ts 文件，收集 name + mtime
+        // 过滤 .ts 文件（排除 _ 前缀的内部文件），收集 name + mtime
         const files: { name: string; mtime: number }[] = []
         for (const e of entries) {
           if (!e.isFile() || !e.name.endsWith(".ts")) continue
+          if (e.name.startsWith("_")) continue
           const stat = yield* Effect.promise(() =>
-            fs.promises.stat(path.join(scriptsDir, e.name)).catch(() => null),
+            fs.promises.stat(path.join(toolDir, e.name)).catch(() => null),
           )
           if (stat) files.push({ name: e.name.replace(/\.ts$/, ""), mtime: stat.mtimeMs })
         }
@@ -298,11 +299,11 @@ export const layer = Layer.effect(
         const top = files.slice(0, 20)
 
         return [
-          "以下是当前工作区已保存的可复用 bun 脚本（位于 .opencode/scripts/）：",
+          "以下是当前工作区可用的自定义工具（位于 .opencode/tool/）：",
           ...top.map((f) => `  - ${f.name}`),
           "",
-          "优先复用已有脚本：若任务与上述脚本功能匹配，先用 Read 工具查看其内容，",
-          "确认可用后通过 bun 工具用相同 name 调用（同名会覆盖更新），避免重复造轮子。",
+          "优先复用已有工具：若任务与上述工具功能匹配，先用 Read 工具查看其内容，",
+          "然后直接在工具调用中填入同名 name 即可调用，无需再次提供代码。",
         ].join("\n")
       }),
     })

@@ -22,7 +22,7 @@ import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { InstanceState } from "@/effect/instance-state"
 import { bashReview } from "./bash-review"
-import { bunReview } from "./bun-review"
+import { toolCodeReview } from "./tool-review"
 import { PartID } from "./schema"
 import * as EffectLogger from "@opencode-ai/core/effect/logger"
 import { EffectBridge } from "@/effect/bridge"
@@ -61,7 +61,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const autoPlanThreshold = autoPlanCfg?.context_threshold ?? 0.3
   const blockedEditTools = new Set(
     // shell 工具注册 ID 为 "bash" (见 tool/shell/id.ts)
-    autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"],
+    autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "task"],
   )
 
   const channel = getDatabaseChannel()
@@ -192,21 +192,21 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               }
             }
 
-            // ★ Bun 安全与可复用性审核：权限自动放行时启动语义+质量审核
-            if (item.id === "bun") {
+            // ★ dynamic_tool 代码审核：对 execute 参数进行 LLM 安全与质量审核
+            if (item.id === "dynamic_tool" && typeof args.execute === "string" && args.execute.length > 0) {
               const mergedRules = Permission.merge(
                 input.agent.permission,
                 input.session.permission ?? [],
               )
-              const bunRule = Permission.evaluate("bun", "*", mergedRules)
-              const bunReviewEnabled = fullCfg.experimental?.bun_review ?? true
+              const toolReviewEnabled = (fullCfg.experimental as Record<string, boolean> | undefined)?.tool_review ?? true
+              const toolRule = Permission.evaluate("dynamic_tool", "*", mergedRules)
 
-              if (bunRule.action === "allow" && bunReviewEnabled) {
+              if (toolRule.action === "allow" && toolReviewEnabled) {
                 const instanceCtx = yield* InstanceState.context
                 const reviewResult = yield* Effect.catch(
-                  bunReview(args, ctx, input, sessionSvc, instanceCtx),
+                  toolCodeReview(String(args.execute), String(args.description ?? ""), ctx, input, sessionSvc, instanceCtx),
                   (_) => {
-                    log.warn("bun review failed, allowing code")
+                    log.warn("dynamic_tool review failed, allowing code")
                     return Effect.succeed(undefined)
                   },
                 )

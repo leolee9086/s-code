@@ -1627,22 +1627,27 @@ export const layer = Layer.effect(
 
             // 环境信息 + 脚本清单单独计算，注入到最后一条用户消息的开头，
             // 避免动态内容（git 状态、日期、子 session 数、脚本列表等）破坏 system prompt 前缀缓存。
-            const [env, scriptsText] = yield* Effect.all([
+            const [env, toolsText] = yield* Effect.all([
               sys.environment(model, sessionID),
-              sys.scripts(),
+              sys.custom_tools(),
             ] as const)
-            const envScriptParts: string[] = []
-            if (env.length > 0 && env.some(Boolean)) envScriptParts.push(env.filter(Boolean).join("\n"))
-            if (scriptsText) envScriptParts.push(scriptsText)
-            if (envScriptParts.length > 0) {
+            const envToolParts: string[] = []
+            if (env.length > 0 && env.some(Boolean)) envToolParts.push(env.filter(Boolean).join("\n"))
+            if (toolsText) envToolParts.push(toolsText)
+            if (envToolParts.length > 0) {
               const userEntry = msgs.find((m) => m.info.id === lastUser.id)
               if (userEntry) {
+                const tagged = [
+                  "<system-reminder>",
+                  envToolParts.join("\n\n"),
+                  "</system-reminder>",
+                ].join("\n")
                 userEntry.parts.unshift({
                   id: PartID.ascending(),
                   messageID: lastUser.id,
                   sessionID,
                   type: "text" as const,
-                  text: envScriptParts.join("\n\n"),
+                  text: tagged,
                   synthetic: true,
                 })
               }
@@ -1668,7 +1673,7 @@ export const layer = Layer.effect(
             const autoPlanEnabled = autoPlanCfg?.enabled ?? true
             let autoPlanContextSufficient = false
             if (autoPlanEnabled && !session.parentID) {
-              const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "bun", "bun_save", "task"]
+              const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "task"]
               const threshold = autoPlanCfg?.context_threshold ?? 0.30
               const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
               if (Option.isSome(usage) && usage.value && usage.value.percentage >= threshold) {
