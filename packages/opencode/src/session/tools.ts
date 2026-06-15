@@ -23,7 +23,8 @@ import { SessionProcessor } from "./processor"
 import { InstanceState } from "@/effect/instance-state"
 import { bashReview } from "./bash-review"
 import { toolCodeReview } from "./tool-review"
-import { PartID } from "./schema"
+import { PartID, SessionID } from "./schema"
+import { Todo } from "./todo"
 import * as EffectLogger from "@opencode-ai/core/effect/logger"
 import { EffectBridge } from "@/effect/bridge"
 import { ProviderV2 } from "@opencode-ai/core/provider"
@@ -58,11 +59,21 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const fullCfg = yield* config.get()
   const autoPlanCfg = fullCfg.auto_plan
   const autoPlanEnabled = autoPlanCfg?.enabled ?? true
-  const autoPlanThreshold = autoPlanCfg?.context_threshold ?? 0.3
   const blockedEditTools = new Set(
-    // shell 工具注册 ID 为 "bash" (见 tool/shell/id.ts)
     autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "task"],
   )
+
+  // 动态计算 auto-plan 阈值：plan 条目数 * 10K，无 plan 时无穷大（永远阻断）
+  // 动态计算 auto-plan 阈值：plan 条目数 * 10K，无 plan 时无穷大（永远阻断）
+  // 预计算一次，后续工具执行复用此值
+  const planThreshold = yield* Effect.gen(function* () {
+    const todoSvc = yield* Todo.Service
+    const todos = yield* todoSvc.get(SessionID.make(input.session.id)).pipe(Effect.catch(() => Effect.succeed([] as Todo.Info[])))
+    const active = todos.filter((t) => t.status === "pending" || t.status === "in_progress").length
+    const ctxLimit = input.model.limit.context || 1_000_000
+    if (active === 0) return { active: 0, target: Infinity, rawTarget: Infinity, label: "∞ (无 plan)" } as const
+    return { active, target: (active * 10000) / ctxLimit, rawTarget: active * 10000, label: `plan ${active} 项 × 10K = ${((active * 10000) / ctxLimit * 100).toFixed(0)}%` } as const
+  })
 
   const channel = getDatabaseChannel()
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
@@ -135,20 +146,28 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 metadata: {},
               }
             }
-            // auto-plan 模式：context 占用低于阈值时阻断编辑工具
+            // auto-plan 模式：按 plan 条目动态计算阈值，无 plan 时永远阻断
             if (autoPlanEnabled && blockedEditTools.has(item.id)) {
               const usage = yield* sessionSvc.contextUsage(ctx.sessionID)
-              if (usage && usage.percentage <= autoPlanThreshold) {
+              const thresholdMet = usage && usage.percentage >= planThreshold.target
+              if (!thresholdMet) {
+                const noPlan = planThreshold.active === 0
+                const output = noPlan
+                  ? [
+                      `[Blocked by auto-plan]`,
+                      `当前没有待完成的 plan 条目。`,
+                      `编辑工具已被阻断，请先使用 todowrite 工具创建 plan（任务列表），`,
+                      `列出需要完成的任务条目。创建设 plan 后编辑工具将按条目数量自动解锁。`,
+                    ].join("\n")
+                  : [
+                      `[Blocked by auto-plan]`,
+                      `Context: ${(usage!.percentage * 100).toFixed(1)}% (${usage!.usedTokens.toLocaleString()} / ${usage!.contextLimit.toLocaleString()} token). Need ${planThreshold.rawTarget.toLocaleString()} tokens (${planThreshold.active} plan items).`,
+                      `Gather information first using read-only tools (read, grep, glob, question).`,
+                    ].join("\n")
                 return {
                   title: "Tool blocked (auto-plan)",
-                  output: [
-                    `[Blocked by auto-plan]`,
-                    `Context usage is ${(usage.percentage * 100).toFixed(1)}%, below the ${(autoPlanThreshold * 100).toFixed(0)}% threshold.`,
-                    `You are in plan mode: gather information and build a plan first.`,
-                    `Only read-only tools (read, grep, glob, question) are available until`,
-                    `context usage exceeds ${(autoPlanThreshold * 100).toFixed(0)}%.`,
-                  ].join("\n"),
-                  metadata: { intercepted: { rule: "auto_plan", reason: "Context threshold not met" } },
+                  output,
+                  metadata: { intercepted: { rule: "auto_plan", reason: noPlan ? "No plan items" : "Context threshold not met" } },
                 }
               }
             }
@@ -250,20 +269,28 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
-          // auto-plan 模式：context 占用低于阈值时阻断编辑工具
+          // auto-plan 模式：按 plan 条目动态计算阈值，无 plan 时永远阻断
           if (autoPlanEnabled && blockedEditTools.has(key)) {
             const usage = yield* sessionSvc.contextUsage(ctx.sessionID)
-            if (usage && usage.percentage <= autoPlanThreshold) {
+            const thresholdMet = usage && usage.percentage >= planThreshold.target
+            if (!thresholdMet) {
+              const noPlan = planThreshold.active === 0
+              const output = noPlan
+                ? [
+                    `[Blocked by auto-plan]`,
+                    `当前没有待完成的 plan 条目。`,
+                    `编辑工具已被阻断，请先使用 todowrite 工具创建 plan（任务列表），`,
+                    `列出需要完成的任务条目。创建设 plan 后编辑工具将按条目数量自动解锁。`,
+                  ].join("\n")
+                : [
+                    `[Blocked by auto-plan]`,
+                    `Context: ${(usage!.percentage * 100).toFixed(1)}% (${usage!.usedTokens.toLocaleString()} / ${usage!.contextLimit.toLocaleString()} token). Need ${planThreshold.rawTarget.toLocaleString()} tokens (${planThreshold.active} plan items).`,
+                    `Gather information first using read-only tools (read, grep, glob, question).`,
+                  ].join("\n")
               return {
                 title: "Tool blocked (auto-plan)",
-                output: [
-                  `[Blocked by auto-plan]`,
-                  `Context usage is ${(usage.percentage * 100).toFixed(1)}%, below the ${(autoPlanThreshold * 100).toFixed(0)}% threshold.`,
-                  `You are in plan mode: gather information and build a plan first.`,
-                  `Only read-only tools (read, grep, glob, question) are available until`,
-                  `context usage exceeds ${(autoPlanThreshold * 100).toFixed(0)}%.`,
-                ].join("\n"),
-                metadata: { intercepted: { rule: "auto_plan", reason: "Context threshold not met" } },
+                output,
+                metadata: { intercepted: { rule: "auto_plan", reason: noPlan ? "No plan items" : "Context threshold not met" } },
               }
             }
           }

@@ -23,6 +23,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
+import { Todo } from "./todo"
 import { Plugin } from "../plugin"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
 import { ToolRegistry } from "@/tool/registry"
@@ -1674,44 +1675,93 @@ export const layer = Layer.effect(
             let autoPlanContextSufficient = false
             if (autoPlanEnabled && !session.parentID) {
               const blockedTools = autoPlanCfg?.blocked_tools ?? ["edit", "write", "apply_patch", "bash", "task"]
-              const threshold = autoPlanCfg?.context_threshold ?? 0.30
+
+              // 动态计算阈值：plan 条目数 * 10K，无 plan 时无穷大（永远阻断）
+              const planInfo = yield* Effect.gen(function* () {
+                const todoSvc = yield* Todo.Service
+                const todos = yield* todoSvc.get(sessionID).pipe(Effect.catch(() => Effect.succeed([] as Todo.Info[])))
+                const active = todos.filter((t) => t.status === "pending" || t.status === "in_progress").length
+                if (active === 0) return { active: 0, target: Infinity, label: "∞" } as const
+                const ctxLimit = model.limit.context || 1_000_000
+                return { active, target: (active * 10000) / ctxLimit, rawTarget: active * 10000, label: `${active}×10K` } as const
+              })
+
               const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
-              if (Option.isSome(usage) && usage.value && usage.value.percentage >= threshold) {
-                // 上下文占用已超过阈值，不注入 auto_plan，process 后退出循环
-                autoPlanContextSufficient = true
-              } else if (Option.isSome(usage) && usage.value) {
+              if (Option.isSome(usage) && usage.value) {
                 const u = usage.value
-                const autoPlanText = [
-                  `<auto-plan>`,
-                  `  上下文占用：${(u.percentage * 100).toFixed(1)}%（${u.usedTokens.toLocaleString()} / ${u.contextLimit.toLocaleString()} token）`,
-                  `  编辑工具（${blockedTools.join("、")}）需上下文占用超过 ${(threshold * 100).toFixed(0)}% 后才可用`,
-                  `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
-                  `  绝对禁止任何试图绕过上下文限制的行为`,
-                  `  绝对禁止任何试图快速消耗上下文以达到阈值的行为，例如发送大量无意义文本或调用大量无用工具等`,
-                  `  绝对禁止向用户要求建议或请求帮助关闭上下文限制`,
-                  `</auto-plan>`,
-                ].join("\n")
-                const autoPlanMsg: SessionV1.User = {
-                  id: MessageID.ascending(),
-                  sessionID,
-                  role: "user",
-                  time: { created: Date.now() },
-                  agent: lastUser.agent,
-                  model: lastUser.model,
+
+                if (planInfo.active === 0) {
+                  // 无 plan → 永远阻断，要求先创建 plan
+                  const autoPlanText = [
+                    `<auto-plan>`,
+                    `  编辑工具（${blockedTools.join("、")}）需先创建 plan（任务列表）后才可用`,
+                    `  当前没有待完成的计划条目。请使用 todowrite 工具列出需要完成的任务。`,
+                    `  创建 plan 后编辑工具将按条目数量自动解锁：条目数 × 10K token`,
+                    `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
+                    `</auto-plan>`,
+                  ].join("\n")
+                  const autoPlanMsg: SessionV1.User = {
+                    id: MessageID.ascending(),
+                    sessionID,
+                    role: "user",
+                    time: { created: Date.now() },
+                    agent: lastUser.agent,
+                    model: lastUser.model,
+                  }
+                  yield* sessions.updateMessage(autoPlanMsg)
+                  yield* sessions.updatePart({
+                    id: PartID.ascending(),
+                    messageID: autoPlanMsg.id,
+                    sessionID,
+                    type: "text",
+                    text: autoPlanText,
+                    synthetic: true,
+                  } satisfies SessionV1.TextPart)
+                } else if (u.percentage >= planInfo.target) {
+                  // 上下文占用已超过动态阈值，退出循环
+                  autoPlanContextSufficient = true
+                } else {
+                  // 上下文不足，注入收集信息消息
+                  const targetTokens = planInfo.active * 10000
+                  const autoPlanText = [
+                    `<auto-plan>`,
+                    `  上下文占用：${u.usedTokens.toLocaleString()} / ${u.contextLimit.toLocaleString()} token（${(u.percentage * 100).toFixed(1)}%）`,
+                    `  编辑工具（${blockedTools.join("、")}）需积累 ${targetTokens.toLocaleString()} tokens 后才可用（当前 ${u.usedTokens.toLocaleString()} / 目标 ${targetTokens.toLocaleString()}，${planInfo.active} 个 plan 条目）`,
+                    `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
+                    `  绝对禁止任何试图绕过上下文限制的行为`,
+                    `  绝对禁止任何试图快速消耗上下文以达到阈值的行为，例如发送大量无意义文本或调用大量无用工具等`,
+                    `  绝对禁止向用户要求建议或请求帮助关闭上下文限制`,
+                    `</auto-plan>`,
+                  ].join("\n")
+                  const autoPlanMsg: SessionV1.User = {
+                    id: MessageID.ascending(),
+                    sessionID,
+                    role: "user",
+                    time: { created: Date.now() },
+                    agent: lastUser.agent,
+                    model: lastUser.model,
+                  }
+                  yield* sessions.updateMessage(autoPlanMsg)
+                  yield* sessions.updatePart({
+                    id: PartID.ascending(),
+                    messageID: autoPlanMsg.id,
+                    sessionID,
+                    type: "text",
+                    text: autoPlanText,
+                    synthetic: true,
+                  } satisfies SessionV1.TextPart)
                 }
-                yield* sessions.updateMessage(autoPlanMsg)
-                yield* sessions.updatePart({
-                  id: PartID.ascending(),
-                  messageID: autoPlanMsg.id,
-                  sessionID,
-                  type: "text",
-                  text: autoPlanText,
-                  synthetic: true,
-                } satisfies SessionV1.TextPart)
               } else {
+                // 无 usage 信息（无 assistant 消息的初始状态）
+                const targetStr = planInfo.active === 0
+                    ? "∞"
+                    : `${(planInfo.active * 10000).toLocaleString()} tokens`
+                  const reason = planInfo.active === 0
+                    ? "需先创建 plan（任务列表）后才可用"
+                    : `需积累 ${targetStr} 后才可用（${planInfo.active} 个 plan 条目）`
                 const autoPlanText = [
                   `<auto-plan>`,
-                  `  编辑工具（${blockedTools.join("、")}）需上下文占用超过 ${(threshold * 100).toFixed(0)}% 后才可用`,
+                  `  编辑工具（${blockedTools.join("、")}）${reason}`,
                   `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
                   `</auto-plan>`,
                 ].join("\n")
