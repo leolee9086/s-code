@@ -5,12 +5,21 @@ import { Global } from "@opencode-ai/core/global"
 import path from "path"
 import { tmpdir } from "os"
 import { spawn } from "child_process"
+import { InstanceState } from "@/effect/instance-state"
 import type { BlockedDep } from "./bun-security"
 
 const SCRIPT_ID_LENGTH = 12
 
 const Parameters = Schema.Struct({
   code: Schema.String.annotate({ description: "要执行的 TypeScript/JavaScript 代码" }),
+  description: Schema.String.annotate({
+    description: "脚本功能的自然语言描述（一句话），仅用于安全审核上下文，不影响文件名",
+  }),
+  name: Schema.String.annotate({
+    description:
+      "脚本的 snake_case 标识符（仅小写字母、数字、下划线，如 parse_csv_config），" +
+      "用作保存的文件名和索引键。必须语义化且稳定，便于后续复用与覆盖更新。",
+  }),
   packages: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: "需要安装的 npm 包，自动解析传递依赖并进行安全检查",
   }),
@@ -18,6 +27,19 @@ const Parameters = Schema.Struct({
     description: "工作目录（必须传入绝对路径，不传则使用当前会话目录）",
   }),
 })
+
+/**
+ * 防御性归一化 name → 文件名片段。
+ * name 应已是 snake_case；此函数只做兜底清洗，不做语义翻译。
+ */
+function toFilename(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")   // 非 [a-z0-9_] 统一变 _
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_")
+    .slice(0, 60) || "script"
+}
 
 export const BunTool = Tool.define(
   "bun",
@@ -30,7 +52,8 @@ export const BunTool = Tool.define(
     ) =>
       Effect.gen(function* () {
         const scriptId = `bun_${crypto.randomUUID().slice(0, SCRIPT_ID_LENGTH)}`
-        const cwd = params.workdir ?? (ctx.extra?.directory as string) ?? process.cwd()
+        const instanceCtx = yield* InstanceState.context
+        const cwd = params.workdir ?? instanceCtx.directory
 
         if (params.workdir && !path.isAbsolute(params.workdir)) {
           return {
@@ -40,9 +63,9 @@ export const BunTool = Tool.define(
           }
         }
 
-        // 安全检查
+        // ── 依赖安全检查 ──────────────────────────────────────────
         if (params.packages && params.packages.length > 0) {
-          const pkgs = [...params.packages] // 解除 readonly
+          const pkgs = [...params.packages]
           const check = yield* security.resolveAndCheck({
             packages: pkgs,
             sessionID: ctx.sessionID,
@@ -91,22 +114,44 @@ export const BunTool = Tool.define(
           }
         }
 
-        const tmpFile = path.join(tmpdir(), `${scriptId}.ts`)
-        const resultFile = path.join(tmpdir(), `${scriptId}.result.json`)
-        yield* Effect.promise(() => Bun.write(tmpFile, params.code))
+        // ── 脚本持久化 ────────────────────────────────────────────
+        // 脚本保存到项目工作树根目录（repo root）下的 .opencode/scripts/。
+        const worktreeRoot = instanceCtx.project.worktree
+        const scriptsDir = path.join(worktreeRoot, ".opencode", "scripts")
+        const filename = `${toFilename(params.name || "script")}.ts`
+        const fullPath = path.join(scriptsDir, filename)
 
+        yield* Effect.promise(() =>
+          Bun.$`mkdir -p ${scriptsDir}`.catch(() => {}),
+        )
+        yield* Effect.promise(() => Bun.write(fullPath, params.code))
+
+        // ── 索引记录（便于后续检索已有脚本）──────────────────────
+        yield* Effect.promise(() =>
+          scriptIndexSave({
+            id: `script_${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+            description: params.description,
+            path: fullPath,
+            sessionID: ctx.sessionID,
+          }),
+        )
+
+        // ── 执行脚本 ──────────────────────────────────────────────
+        const resultFile = path.join(tmpdir(), `${scriptId}.result.json`)
         const result = yield* Effect.promise<{ stdout: string; stderr: string; exitCode: number }>(
           () =>
             new Promise((resolve, reject) => {
-              const child = spawn("bun", ["run", tmpFile], {
+              const child = spawn(process.execPath, ["run", fullPath], {
                 cwd,
                 env: {
                   ...(process.env as Record<string, string>),
                   O_SESSION_ID: ctx.sessionID,
                   O_DIRECTORY: cwd,
+                  O_WORKTREE: worktreeRoot,
                   O_AGENT: ctx.agent,
                   O_SCRIPT_ID: scriptId,
-                  O_RESULT_PATH: resultFile, // 脚本可向此文件写入结构化结果
+                  O_SCRIPT_PATH: fullPath,
+                  O_RESULT_PATH: resultFile,
                 },
                 stdio: ["pipe", "pipe", "pipe"],
               })
@@ -136,17 +181,16 @@ export const BunTool = Tool.define(
           yield* Effect.promise(() => Bun.$`rm -f ${resultFile}`.catch(() => {})).pipe(Effect.ignore)
         }
 
-        yield* Effect.promise(() => Bun.$`rm -f ${tmpFile}`.catch(() => {})).pipe(Effect.ignore)
-
         const output = result.stderr
-          ? `[exit: ${result.exitCode}]\n${result.stdout}\n--- stderr ---\n${result.stderr}`
-          : `[exit: ${result.exitCode}]\n${result.stdout}`
+          ? `[exit: ${result.exitCode}] [saved: ${fullPath}]\n${result.stdout}\n--- stderr ---\n${result.stderr}`
+          : `[exit: ${result.exitCode}] [saved: ${fullPath}]\n${result.stdout}`
 
         return {
           output,
-          title: `bun#${scriptId}`,
+          title: `bun#${filename}`,
           metadata: {
             scriptId,
+            scriptPath: fullPath,
             exitCode: result.exitCode,
             ...(structured !== undefined ? { result: structured } : {}),
           },
@@ -155,7 +199,7 @@ export const BunTool = Tool.define(
 
     return {
       description: [
-        "在 Bun 运行时中执行 TypeScript/JavaScript 代码。",
+        "在 Bun 运行时中执行 TypeScript/JavaScript 代码，并自动保存为可复用脚本。",
         "",
         "## 与 bash 的区别",
         "相比 bash，bun 拥有完整的编程能力：类型安全、无编码问题、可直接操作 JSON、",
@@ -171,6 +215,12 @@ export const BunTool = Tool.define(
         "- 复杂逻辑 → 条件、循环、错误处理",
         "- 安装并使用 npm 包 → 通过 packages 参数自动安装",
         "",
+        "## 脚本可复用性",
+        "- 脚本自动保存到 .opencode/scripts/ 目录，以 name（snake_case）命名；description 仅用于审核",
+        "- 同名脚本会被覆盖更新，因此应关注脚本的可复用性和扩展性",
+        "- 脚本通过 O_DIRECTORY / O_WORKTREE / O_AGENT 环境变量获取上下文",
+        "- 可通过 O_RESULT_PATH 写入 JSON 结构化结果供后续使用",
+        "",
         "## 何时应该用 bash（而不是 bun）",
         "- 需要交互式终端（如 vim、htop）",
         "- 用户明确要求用 shell",
@@ -178,101 +228,6 @@ export const BunTool = Tool.define(
       parameters: Parameters,
       execute,
     }
-  }),
-)
-
-// ─── bun.save 工具 ────────────────────────────────────────────
-
-const SaveParameters = Schema.Struct({
-  filename: Schema.String.annotate({ description: "脚本文件名（相对于项目 .opencode/scripts/ 目录）" }),
-  code: Schema.String.annotate({ description: "完整的 TypeScript/JavaScript 脚本代码" }),
-  description: Schema.String.annotate({ description: "脚本功能描述（自然语言，用于后续检索）" }),
-  run: Schema.optional(Schema.Boolean).annotate({ description: "保存后立即执行，默认 false" }),
-})
-
-export const BunSaveTool = Tool.define(
-  "bun_save",
-  Effect.gen(function* () {
-    const execute = (
-      params: Schema.Schema.Type<typeof SaveParameters>,
-      ctx: Tool.Context,
-    ) =>
-      Effect.gen(function* () {
-        const worktree = (ctx.extra?.worktree as string) ?? (ctx.extra?.directory as string) ?? process.cwd()
-        const scriptsDir = path.join(worktree, ".opencode", "scripts")
-        const fullPath = path.join(scriptsDir, params.filename)
-
-        yield* Effect.promise(() =>
-          Bun.$`mkdir -p ${path.dirname(fullPath)}`.catch(() => {}),
-        )
-
-        yield* Effect.promise(() => Bun.write(fullPath, params.code))
-
-        yield* Effect.promise(() =>
-          scriptIndexSave({
-            id: `saved_${params.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
-            description: params.description,
-            path: fullPath,
-            sessionID: ctx.sessionID,
-          }),
-        )
-
-        if (params.run) {
-          const result = yield* Effect.promise<{ stdout: string; stderr: string; exitCode: number }>(
-            () =>
-              new Promise((resolve, reject) => {
-                const child = spawn("bun", ["run", fullPath], {
-                  cwd: worktree,
-                  env: {
-                    ...(process.env as Record<string, string>),
-                    O_SESSION_ID: ctx.sessionID,
-                    O_DIRECTORY: worktree,
-                  },
-                  stdio: ["pipe", "pipe", "pipe"],
-                })
-                const stdout: Buffer[] = []
-                const stderr: Buffer[] = []
-                child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk))
-                child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk))
-                child.on("error", reject)
-                child.on("close", (exitCode) => {
-                  resolve({
-                    stdout: Buffer.concat(stdout).toString(),
-                    stderr: Buffer.concat(stderr).toString(),
-                    exitCode: exitCode ?? -1,
-                  })
-                })
-              }),
-          )
-
-          const output = result.stderr
-            ? `[exit: ${result.exitCode}]\n${result.stdout}\n--- stderr ---\n${result.stderr}`
-            : `[exit: ${result.exitCode}]\n${result.stdout}`
-
-          return { output, title: "bun.save (ran)", metadata: { path: fullPath, exitCode: result.exitCode } }
-        }
-
-        return { output: `脚本已保存至 ${fullPath}`, title: "bun_save", metadata: { path: fullPath } }
-      }).pipe(Effect.orDie)
-
-    return {
-      description: [
-        "将一段 TypeScript/JavaScript 脚本持久化保存到项目目录中。",
-        "保存后的脚本会在未来相关任务中自动可用。",
-        "",
-        "## 何时使用",
-        "- 发现一段可复用的数据处理逻辑",
-        "- 编写了项目专用的工具函数",
-        "- 创建了分析/报告生成脚本",
-        "",
-        "## 注意事项",
-        "- 脚本代码应避免依赖文件系统绝对路径",
-        "  （使用 process.env.O_DIRECTORY 或 process.cwd() 替代）",
-        "- 每条脚本应包含自然语言说明",
-      ].join("\n"),
-      parameters: SaveParameters,
-      execute,
-    } as Tool.DefWithoutID<typeof SaveParameters, { path: string; exitCode?: number }>
   }),
 )
 
@@ -298,6 +253,11 @@ async function scriptIndexSave(input: {
   await Bun.write(db, JSON.stringify(existing, null, 2))
 }
 
+/**
+ * 读取全局脚本索引（跨 worktree）。
+ * 注意：索引可能包含其他 worktree 的脚本，不用于当前 worktree 的启动注入。
+ * 启动注入改用扫 .opencode/scripts/ 目录，见 SystemPrompt.scripts()。
+ */
 export async function scriptIndexList(): Promise<Array<{ id: string; description: string; path: string }>> {
   const db = scriptIndexPath()
   const data = await Bun.file(db).json().catch(() => ({}))

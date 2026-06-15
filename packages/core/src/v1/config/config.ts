@@ -183,6 +183,9 @@ export const Info = Schema.Struct({
       bash_review: Schema.optional(Schema.Boolean).annotate({
         description: "自动放行 bash 命令时启动安全审核 subagent（默认 true）",
       }),
+      bun_review: Schema.optional(Schema.Boolean).annotate({
+        description: "自动放行 bun 脚本时启动安全+可复用性审核 subagent（默认 true）",
+      }),
       policies: Schema.optional(Schema.mutable(Schema.Array(ConfigExperimental.Policy))).annotate({
         description: "Policy statements applied to supported resources, such as provider access",
       }),

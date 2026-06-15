@@ -1625,13 +1625,35 @@ export const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, modelMsgs] = yield* Effect.all([
-              sys.skills(agent),
+            // 环境信息 + 脚本清单单独计算，注入到最后一条用户消息的开头，
+            // 避免动态内容（git 状态、日期、子 session 数、脚本列表等）破坏 system prompt 前缀缓存。
+            const [env, scriptsText] = yield* Effect.all([
               sys.environment(model, sessionID),
+              sys.scripts(),
+            ] as const)
+            const envScriptParts: string[] = []
+            if (env.length > 0 && env.some(Boolean)) envScriptParts.push(env.filter(Boolean).join("\n"))
+            if (scriptsText) envScriptParts.push(scriptsText)
+            if (envScriptParts.length > 0) {
+              const userEntry = msgs.find((m) => m.info.id === lastUser.id)
+              if (userEntry) {
+                userEntry.parts.unshift({
+                  id: PartID.ascending(),
+                  messageID: lastUser.id,
+                  sessionID,
+                  type: "text" as const,
+                  text: envScriptParts.join("\n\n"),
+                  synthetic: true,
+                })
+              }
+            }
+
+            const [skills, instructions, modelMsgs] = yield* Effect.all([
+              sys.skills(agent),
               instruction.system().pipe(Effect.orDie),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
-            const system = [...env, ...instructions, ...(skills ? [skills] : [])]
+            const system = [...instructions, ...(skills ? [skills] : [])]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
 

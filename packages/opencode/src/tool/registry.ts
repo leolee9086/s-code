@@ -21,6 +21,8 @@ import { RelayMessageTool } from "./relay-message"
 import { SendChannelMessageTool } from "./send-channel-message"
 import { ListChannelsTool } from "./list-channels"
 import { ScreenshotTool } from "./screenshot"
+import { BunTool } from "./bun"
+import { BunSecurity } from "./bun-security"
 import { InstanceState } from "@/effect/instance-state"
 import type { InstanceContext } from "@/project/instance-context"
 import { Database } from "@opencode-ai/core/database/database"
@@ -116,6 +118,7 @@ export const layer: Layer.Layer<
   | Truncate.Service
   | RuntimeFlags.Service
   | Database.Service
+  | BunSecurity.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -149,6 +152,7 @@ export const layer: Layer.Layer<
     const sendChannelMsg = yield* SendChannelMessageTool
     const listChannels = yield* ListChannelsTool
     const screenshot = yield* ScreenshotTool
+    const bunTool = yield* BunTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -262,9 +266,10 @@ export const layer: Layer.Layer<
           spawn: Tool.init(spawn),
           relay_message: Tool.init(relayMsg),
           send_channel_message: Tool.init(sendChannelMsg),
-          list_channels: Tool.init(listChannels),
-          screenshot: Tool.init(screenshot),
-        })
+           list_channels: Tool.init(listChannels),
+           screenshot: Tool.init(screenshot),
+           bun: Tool.init(bunTool),
+         })
 
         return {
           custom,
@@ -279,6 +284,7 @@ export const layer: Layer.Layer<
             tool.write,
             tool.task,
             tool.fetch,
+            tool.bun,
             tool.todo,
             tool.search,
             tool.skill,
@@ -424,6 +430,7 @@ export const defaultLayer = Layer.suspend(() =>
       Layer.provide(CrossSpawnSpawner.defaultLayer),
       Layer.provide(Ripgrep.defaultLayer),
       Layer.provide(Truncate.defaultLayer),
+      Layer.provide(BunSecurity.defaultLayer),
     )
     .pipe(Layer.provide(Database.defaultLayer), Layer.provide(RuntimeFlags.defaultLayer)),
 )

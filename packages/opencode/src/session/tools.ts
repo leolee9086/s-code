@@ -22,6 +22,7 @@ import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { InstanceState } from "@/effect/instance-state"
 import { bashReview } from "./bash-review"
+import { bunReview } from "./bun-review"
 import { PartID } from "./schema"
 import * as EffectLogger from "@opencode-ai/core/effect/logger"
 import { EffectBridge } from "@/effect/bridge"
@@ -184,6 +185,28 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   bashReview(args, ctx, input, sessionSvc, instanceCtx),
                   (_) => {
                     log.warn("bash review failed, allowing command")
+                    return Effect.succeed(undefined)
+                  },
+                )
+                if (reviewResult) return reviewResult
+              }
+            }
+
+            // ★ Bun 安全与可复用性审核：权限自动放行时启动语义+质量审核
+            if (item.id === "bun") {
+              const mergedRules = Permission.merge(
+                input.agent.permission,
+                input.session.permission ?? [],
+              )
+              const bunRule = Permission.evaluate("bun", "*", mergedRules)
+              const bunReviewEnabled = fullCfg.experimental?.bun_review ?? true
+
+              if (bunRule.action === "allow" && bunReviewEnabled) {
+                const instanceCtx = yield* InstanceState.context
+                const reviewResult = yield* Effect.catch(
+                  bunReview(args, ctx, input, sessionSvc, instanceCtx),
+                  (_) => {
+                    log.warn("bun review failed, allowing code")
                     return Effect.succeed(undefined)
                   },
                 )

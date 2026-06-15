@@ -28,6 +28,7 @@ import { FetchHttpClient } from "effect/unstable/http"
 import { Format } from "@/format"
 import { Ripgrep } from "@opencode-ai/core/filesystem/ripgrep"
 import * as Truncate from "@/tool/truncate"
+import { BunSecurity } from "@/tool/bun-security"
 import { InstanceState } from "@/effect/instance-state"
 import { Reference } from "@/reference/reference"
 import { RepositoryCache } from "@/reference/repository-cache"
@@ -70,7 +71,7 @@ const registryLayer = (opts: RegistryLayerOptions = {}) =>
       Layer.provide(Format.defaultLayer),
       Layer.provide(Layer.mergeAll(node, Database.defaultLayer)),
       Layer.provide(Ripgrep.defaultLayer),
-      Layer.provide(Truncate.defaultLayer),
+      Layer.provide(Layer.mergeAll(Truncate.defaultLayer, BunSecurity.defaultLayer)),
     )
     .pipe(Layer.provide(RuntimeFlags.layer(opts.flags ?? {})))
 
