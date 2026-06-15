@@ -1,5 +1,0 @@
-console.log("bun 工具调用成功！")
-console.log("工作目录:", process.cwd())
-console.log("O_DIRECTORY:", process.env.O_DIRECTORY)
-console.log("O_WORKTREE:", process.env.O_WORKTREE)
-console.log("Bun 版本:", Bun.version)
