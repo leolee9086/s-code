@@ -1680,10 +1680,11 @@ export const layer = Layer.effect(
               const planInfo = yield* Effect.gen(function* () {
                 const todoSvc = yield* Todo.Service
                 const todos = yield* todoSvc.get(sessionID).pipe(Effect.catch(() => Effect.succeed([] as Todo.Info[])))
+                const hasPlan = todos.length > 0
                 const active = todos.filter((t) => t.status === "pending" || t.status === "in_progress").length
-                if (active === 0) return { active: 0, target: Infinity, label: "∞" } as const
+                if (active === 0) return { active: 0, hasPlan, target: Infinity, label: "∞" } as const
                 const ctxLimit = model.limit.context || 1_000_000
-                return { active, target: (active * 10000) / ctxLimit, rawTarget: active * 10000, label: `${active}×10K` } as const
+                return { active, hasPlan: true, target: (active * 10000) / ctxLimit, rawTarget: active * 10000, label: `${active}×10K` } as const
               })
 
               const usage = yield* sessions.contextUsage(sessionID).pipe(Effect.option)
@@ -1691,32 +1692,35 @@ export const layer = Layer.effect(
                 const u = usage.value
 
                 if (planInfo.active === 0) {
-                  // 无 plan → 永远阻断，要求先创建 plan
-                  const autoPlanText = [
-                    `<auto-plan>`,
-                    `  编辑工具（${blockedTools.join("、")}）需先创建 plan（任务列表）后才可用`,
-                    `  当前没有待完成的计划条目。请使用 todowrite 工具列出需要完成的任务。`,
-                    `  创建 plan 后编辑工具将按条目数量自动解锁：条目数 × 10K token`,
-                    `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
-                    `</auto-plan>`,
-                  ].join("\n")
-                  const autoPlanMsg: SessionV1.User = {
-                    id: MessageID.ascending(),
-                    sessionID,
-                    role: "user",
-                    time: { created: Date.now() },
-                    agent: lastUser.agent,
-                    model: lastUser.model,
+                  if (!planInfo.hasPlan) {
+                    // 从未创建 plan → 永远阻断，要求先创建 plan
+                    const autoPlanText = [
+                      `<auto-plan>`,
+                      `  编辑工具（${blockedTools.join("、")}）需先创建 plan（任务列表）后才可用`,
+                      `  当前没有待完成的计划条目。请使用 todowrite 工具列出需要完成的任务。`,
+                      `  创建 plan 后编辑工具将按条目数量自动解锁：条目数 × 10K token`,
+                      `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
+                      `</auto-plan>`,
+                    ].join("\n")
+                    const autoPlanMsg: SessionV1.User = {
+                      id: MessageID.ascending(),
+                      sessionID,
+                      role: "user",
+                      time: { created: Date.now() },
+                      agent: lastUser.agent,
+                      model: lastUser.model,
+                    }
+                    yield* sessions.updateMessage(autoPlanMsg)
+                    yield* sessions.updatePart({
+                      id: PartID.ascending(),
+                      messageID: autoPlanMsg.id,
+                      sessionID,
+                      type: "text",
+                      text: autoPlanText,
+                      synthetic: true,
+                    } satisfies SessionV1.TextPart)
                   }
-                  yield* sessions.updateMessage(autoPlanMsg)
-                  yield* sessions.updatePart({
-                    id: PartID.ascending(),
-                    messageID: autoPlanMsg.id,
-                    sessionID,
-                    type: "text",
-                    text: autoPlanText,
-                    synthetic: true,
-                  } satisfies SessionV1.TextPart)
+                  // plan 全部完成：阻断编辑工具，但不自动续行，自然结束
                 } else if (u.percentage >= planInfo.target) {
                   // 上下文占用已超过动态阈值，退出循环
                   autoPlanContextSufficient = true
@@ -1751,17 +1755,13 @@ export const layer = Layer.effect(
                     synthetic: true,
                   } satisfies SessionV1.TextPart)
                 }
-              } else {
-                // 无 usage 信息（无 assistant 消息的初始状态）
-                const targetStr = planInfo.active === 0
-                    ? "∞"
-                    : `${(planInfo.active * 10000).toLocaleString()} tokens`
-                  const reason = planInfo.active === 0
-                    ? "需先创建 plan（任务列表）后才可用"
-                    : `需积累 ${targetStr} 后才可用（${planInfo.active} 个 plan 条目）`
+              } else if (!planInfo.hasPlan) {
+                // 无 usage 信息（无 assistant 消息的初始状态），且从未创建 plan
                 const autoPlanText = [
                   `<auto-plan>`,
-                  `  编辑工具（${blockedTools.join("、")}）${reason}`,
+                  `  编辑工具（${blockedTools.join("、")}）需先创建 plan（任务列表）后才可用`,
+                  `  当前没有待完成的计划条目。请使用 todowrite 工具列出需要完成的任务。`,
+                  `  创建 plan 后编辑工具将按条目数量自动解锁：条目数 × 10K token`,
                   `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
                   `</auto-plan>`,
                 ].join("\n")

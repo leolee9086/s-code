@@ -69,10 +69,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const planThreshold = yield* Effect.gen(function* () {
     const todoSvc = yield* Todo.Service
     const todos = yield* todoSvc.get(SessionID.make(input.session.id)).pipe(Effect.catch(() => Effect.succeed([] as Todo.Info[])))
+    const hasPlan = todos.length > 0
     const active = todos.filter((t) => t.status === "pending" || t.status === "in_progress").length
     const ctxLimit = input.model.limit.context || 1_000_000
-    if (active === 0) return { active: 0, target: Infinity, rawTarget: Infinity, label: "∞ (无 plan)" } as const
-    return { active, target: (active * 10000) / ctxLimit, rawTarget: active * 10000, label: `plan ${active} 项 × 10K = ${((active * 10000) / ctxLimit * 100).toFixed(0)}%` } as const
+    if (active === 0) return { active: 0, hasPlan, target: Infinity, rawTarget: Infinity, label: "∞ (无 plan)" } as const
+    return { active, hasPlan: true, target: (active * 10000) / ctxLimit, rawTarget: active * 10000, label: `plan ${active} 项 × 10K = ${((active * 10000) / ctxLimit * 100).toFixed(0)}%` } as const
   })
 
   const channel = getDatabaseChannel()
@@ -151,8 +152,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               const usage = yield* sessionSvc.contextUsage(ctx.sessionID)
               const thresholdMet = usage && usage.percentage >= planThreshold.target
               if (!thresholdMet) {
-                const noPlan = planThreshold.active === 0
-                const output = noPlan
+                const neverPlanned = planThreshold.active === 0
+                const output = neverPlanned
                   ? [
                       `[Blocked by auto-plan]`,
                       `当前没有待完成的 plan 条目。`,
@@ -167,7 +168,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 return {
                   title: "Tool blocked (auto-plan)",
                   output,
-                  metadata: { intercepted: { rule: "auto_plan", reason: noPlan ? "No plan items" : "Context threshold not met" } },
+                  metadata: { intercepted: { rule: "auto_plan", reason: neverPlanned ? "No plan items" : "Context threshold not met" } },
                 }
               }
             }
@@ -274,8 +275,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             const usage = yield* sessionSvc.contextUsage(ctx.sessionID)
             const thresholdMet = usage && usage.percentage >= planThreshold.target
             if (!thresholdMet) {
-              const noPlan = planThreshold.active === 0
-              const output = noPlan
+              const neverPlanned = planThreshold.active === 0
+              const output = neverPlanned
                 ? [
                     `[Blocked by auto-plan]`,
                     `当前没有待完成的 plan 条目。`,
@@ -287,10 +288,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     `Context: ${(usage!.percentage * 100).toFixed(1)}% (${usage!.usedTokens.toLocaleString()} / ${usage!.contextLimit.toLocaleString()} token). Need ${planThreshold.rawTarget.toLocaleString()} tokens (${planThreshold.active} plan items).`,
                     `Gather information first using read-only tools (read, grep, glob, question).`,
                   ].join("\n")
-              return {
+            return {
                 title: "Tool blocked (auto-plan)",
                 output,
-                metadata: { intercepted: { rule: "auto_plan", reason: noPlan ? "No plan items" : "Context threshold not met" } },
+                metadata: { intercepted: { rule: "auto_plan", reason: neverPlanned ? "No plan items" : "Context threshold not met" } },
               }
             }
           }
