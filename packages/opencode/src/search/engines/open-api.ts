@@ -288,29 +288,6 @@ export function makeFrinkiac(config: EngineConfig): SearchEngine {
     debugLabel: "frinkiac",
   })(config)
 }
-
-// ── Z-Library（书籍搜索）───────────────────────────────
-export function makeZLibrary(config: EngineConfig): SearchEngine {
-  return makeJsonApiEngine({
-    name: "z-library",
-    category: "book",
-    url: (q, n) => `https://api.z-lib.gs/search?q=${encodeURIComponent(q)}&limit=${n}`,
-    parse: (json: unknown, max: number) => {
-      const data = json as { books?: Array<{ title: string; url: string; author?: string; description?: string; year?: number }> }
-      const books = data?.books
-      if (!Array.isArray(books)) return []
-      return books.slice(0, max).map((b, i) =>
-        makeSearchResult({
-          title: b.title || "Untitled",
-          url: b.url || "",
-          snippet: `${b.author || ""} · ${b.year || ""} — ${b.description?.slice(0, 100) || ""}`.trim(),
-          engine: "z-library", position: i + 1, category: "book",
-        }))
-    },
-    debugLabel: "z-library",
-  })(config)
-}
-
 // ── Apple App Store（应用搜索）───────────────────────
 export function makeAppleAppStore(config: EngineConfig): SearchEngine {
   return makeJsonApiEngine({
