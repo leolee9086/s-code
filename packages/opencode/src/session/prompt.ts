@@ -162,6 +162,37 @@ export const layer = Layer.effect(
       yield* state.cancel(sessionID)
     })
 
+    /** 构造一条独立的合成 user 消息并写入数据库，返回创建的消息。
+     *  统一了此前散落在 evolve/forever/auto-plan/injectUserMessage 等处的
+     *  updateMessage + updatePart 重复模板。以 base.agent/base.model 为准，
+     *  保证注入消息的 agent/model 与当前对话上下文连续。 */
+    const createUserTextMessage = Effect.fn("SessionPrompt.createUserTextMessage")(function* (
+      sessionID: SessionID,
+      parts: Array<{ text: string; synthetic?: boolean }>,
+      base: { agent: string; model: SessionV1.User["model"] },
+    ) {
+      const msg: SessionV1.User = {
+        id: MessageID.ascending(),
+        sessionID,
+        role: "user",
+        time: { created: Date.now() },
+        agent: base.agent,
+        model: base.model,
+      }
+      yield* sessions.updateMessage(msg)
+      for (const p of parts) {
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          messageID: msg.id,
+          sessionID,
+          type: "text",
+          text: p.text,
+          synthetic: p.synthetic ?? true,
+        } satisfies SessionV1.TextPart)
+      }
+      return msg
+    })
+
     /** 创建一条独立的合成用户消息并写入数据库。
      *  以最后一条用户消息的 agent/model 为准，确保模型推理时上下文连续。 */
     const injectUserMessage = Effect.fn("SessionPrompt.injectUserMessage")(function* (
@@ -176,23 +207,7 @@ export const layer = Layer.effect(
         yield* elog.warn("injectUserMessage: no user message found", { sessionID })
         return
       }
-      const msg: SessionV1.User = {
-        id: MessageID.ascending(),
-        sessionID,
-        role: "user",
-        time: { created: Date.now() },
-        agent: lastUser.agent,
-        model: lastUser.model,
-      }
-      yield* sessions.updateMessage(msg)
-      yield* sessions.updatePart({
-        id: PartID.ascending(),
-        messageID: msg.id,
-        sessionID,
-        type: "text",
-        text,
-        synthetic: true,
-      } satisfies SessionV1.TextPart)
+      yield* createUserTextMessage(sessionID, [{ text }], lastUser)
     })
 
     /** 打断当前 LLM 循环 → 注入独立用户消息 → 重启循环。
@@ -1346,6 +1361,60 @@ export const layer = Layer.effect(
         const ERROR_STORM_THRESHOLD = 3
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
+        // ── 注入三入口 ──────────────────────────────────────────────
+        // 按入库/驱动循环两个维度区分，统一将内容放在消息序列绝对末尾，
+        // 保证已有的历史前缀 [sys][u1][a1]... 全部命中 provider 的 prefix cache。
+        //
+        // 1. inject — transient：在内存 msgs 末尾追加独立 synthetic user 消息。
+        //    不入库，本轮 toModelMessages 即可见，用于 env/工具清单等每轮变动的上下文。
+        //    前缀缓存最优：历史消息不变，只有新增尾部未命中。
+        const inject = (
+          msgsRef: SessionV1.WithParts[],
+          parts: Array<{ type: "text"; text: string }>,
+          base: { agent: string; model: SessionV1.User["model"] },
+        ) => {
+          const id = MessageID.ascending()
+          msgsRef.push({
+            info: {
+              id,
+              sessionID,
+              role: "user",
+              time: { created: Date.now() },
+              agent: base.agent,
+              model: base.model,
+            },
+            parts: parts.map((p) => ({
+              id: PartID.ascending(),
+              messageID: id,
+              sessionID,
+              type: "text" as const,
+              text: p.text,
+              synthetic: true,
+            })),
+          })
+        }
+
+        // 2. injectAndPersist — 入库新 user 消息，不干预循环流程。
+        //    下一轮 filterCompacted 自然读到，由循环正常逻辑决定是否 continue。
+        //    用于 auto-plan 等需要持久化、但无需强制续行的场景。
+        const injectAndPersist = Effect.fnUntraced(function* (
+          parts: Array<{ text: string; synthetic?: boolean }>,
+          base: { agent: string; model: SessionV1.User["model"] },
+        ) {
+          return yield* createUserTextMessage(sessionID, parts, base)
+        })
+
+        // 3. injectAndContinue — 入库 + 返回 continue 信号。
+        //    调用方 return 此结果以强制下一轮。用于 evolve/forever 等需续行的模式。
+        const injectAndContinue = Effect.fnUntraced(function* (
+          parts: Array<{ text: string; synthetic?: boolean }>,
+          base: { agent: string; model: SessionV1.User["model"] },
+        ) {
+          yield* createUserTextMessage(sessionID, parts, base)
+          return "continue" as const
+        })
+        // ────────────────────────────────────────────────────────────
+
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* slog.info("loop", { step })
@@ -1626,8 +1695,14 @@ export const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            // 环境信息 + 脚本清单单独计算，注入到最后一条用户消息的开头，
-            // 避免动态内容（git 状态、日期、子 session 数、脚本列表等）破坏 system prompt 前缀缓存。
+            // 环境信息 + 自定义工具清单每轮都会变动（git 状态、日期、子 session 数、
+            // 工具 mtime 排序等），不能塞进消息序列中部，否则在多步工具调用循环中
+            // 会破坏已有消息的前缀缓存。
+            // 用 inject() 在内存 msgs 末尾追加一条独立的 synthetic user 消息：
+            //   - 不入库：纯 transient，下一轮重新计算，避免污染持久历史。
+            //   - 位置在序列绝对末尾：历史消息 [sys][u1][a1]... 全部命中 prefix cache，
+            //     只有这条新尾部未命中，达到真正的前缀缓存友好。
+            //   - 此处先于下方 toModelMessagesEffect(msgs) 执行，本轮即可被模型看到。
             const [env, toolsText] = yield* Effect.all([
               sys.environment(model, sessionID),
               sys.custom_tools(),
@@ -1636,22 +1711,16 @@ export const layer = Layer.effect(
             if (env.length > 0 && env.some(Boolean)) envToolParts.push(env.filter(Boolean).join("\n"))
             if (toolsText) envToolParts.push(toolsText)
             if (envToolParts.length > 0) {
-              const userEntry = msgs.find((m) => m.info.id === lastUser.id)
-              if (userEntry) {
-                const tagged = [
-                  "<system-reminder>",
-                  envToolParts.join("\n\n"),
-                  "</system-reminder>",
-                ].join("\n")
-                userEntry.parts.unshift({
-                  id: PartID.ascending(),
-                  messageID: lastUser.id,
-                  sessionID,
-                  type: "text" as const,
-                  text: tagged,
-                  synthetic: true,
-                })
-              }
+              const tagged = [
+                "<system-reminder>",
+                envToolParts.join("\n\n"),
+                "</system-reminder>",
+              ].join("\n")
+              inject(
+                msgs,
+                [{ type: "text", text: tagged }],
+                { agent: lastUser.agent, model: lastUser.model },
+              )
             }
 
             const [skills, instructions, modelMsgs] = yield* Effect.all([
@@ -1702,23 +1771,10 @@ export const layer = Layer.effect(
                       `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
                       `</auto-plan>`,
                     ].join("\n")
-                    const autoPlanMsg: SessionV1.User = {
-                      id: MessageID.ascending(),
-                      sessionID,
-                      role: "user",
-                      time: { created: Date.now() },
-                      agent: lastUser.agent,
-                      model: lastUser.model,
-                    }
-                    yield* sessions.updateMessage(autoPlanMsg)
-                    yield* sessions.updatePart({
-                      id: PartID.ascending(),
-                      messageID: autoPlanMsg.id,
-                      sessionID,
-                      type: "text",
-                      text: autoPlanText,
-                      synthetic: true,
-                    } satisfies SessionV1.TextPart)
+                    yield* injectAndPersist(
+                      [{ text: autoPlanText }],
+                      { agent: lastUser.agent, model: lastUser.model },
+                    )
                   }
                   // plan 全部完成：阻断编辑工具，但不自动续行，自然结束
                 } else if (u.percentage >= planInfo.target) {
@@ -1737,23 +1793,10 @@ export const layer = Layer.effect(
                     `  绝对禁止向用户要求建议或请求帮助关闭上下文限制`,
                     `</auto-plan>`,
                   ].join("\n")
-                  const autoPlanMsg: SessionV1.User = {
-                    id: MessageID.ascending(),
-                    sessionID,
-                    role: "user",
-                    time: { created: Date.now() },
-                    agent: lastUser.agent,
-                    model: lastUser.model,
-                  }
-                  yield* sessions.updateMessage(autoPlanMsg)
-                  yield* sessions.updatePart({
-                    id: PartID.ascending(),
-                    messageID: autoPlanMsg.id,
-                    sessionID,
-                    type: "text",
-                    text: autoPlanText,
-                    synthetic: true,
-                  } satisfies SessionV1.TextPart)
+                  yield* injectAndPersist(
+                    [{ text: autoPlanText }],
+                    { agent: lastUser.agent, model: lastUser.model },
+                  )
                 }
               } else if (!planInfo.hasPlan) {
                 // 无 usage 信息（无 assistant 消息的初始状态），且从未创建 plan
@@ -1765,23 +1808,10 @@ export const layer = Layer.effect(
                   `  低于阈值时仅限使用只读工具（read、grep、glob、question）收集信息`,
                   `</auto-plan>`,
                 ].join("\n")
-                const autoPlanMsg: SessionV1.User = {
-                  id: MessageID.ascending(),
-                  sessionID,
-                  role: "user",
-                  time: { created: Date.now() },
-                  agent: lastUser.agent,
-                  model: lastUser.model,
-                }
-                yield* sessions.updateMessage(autoPlanMsg)
-                yield* sessions.updatePart({
-                  id: PartID.ascending(),
-                  messageID: autoPlanMsg.id,
-                  sessionID,
-                  type: "text",
-                  text: autoPlanText,
-                  synthetic: true,
-                } satisfies SessionV1.TextPart)
+                yield* injectAndPersist(
+                  [{ text: autoPlanText }],
+                  { agent: lastUser.agent, model: lastUser.model },
+                )
               }
             }
 
@@ -1823,21 +1853,9 @@ export const layer = Layer.effect(
                 (m) => m.info.role === "user" && m.info.id === lastUser.id,
               )
               if (lastUserMsg?.parts.some((p) => p.type === "text" && p.synthetic)) {
-                const continueMsg: SessionV1.User = {
-                  id: MessageID.ascending(),
-                  sessionID,
-                  role: "user",
-                  time: { created: Date.now() },
-                  agent: lastUser.agent,
-                  model: lastUser.model,
-                }
-                yield* sessions.updateMessage(continueMsg)
-                yield* sessions.updatePart({
-                  id: PartID.ascending(),
-                  messageID: continueMsg.id,
-                  sessionID,
-                  type: "text",
-                text: `<system-reminder>
+                return yield* injectAndContinue(
+                  [{
+                    text: `<system-reminder>
 你当前处于进化模式，
 这个模式的作用是在不需要用户输入的情况下,不断改进你自身的代码实现,以更好地完成任务。
 如果你认为存在用户给出的明确指令或者任务,应该先完成它们。
@@ -1848,9 +1866,9 @@ export const layer = Layer.effect(
 必须调用 evolve({ message: '本轮总结和下轮目标' }) 来让你的修改进入二进制并结束本轮进化。
 请分析进展并使用工具，完成你对自身的改进之后，调用 evolve工具。
 </system-reminder>`,
-                synthetic: true,
-              } satisfies SessionV1.TextPart)
-              return "continue" as const
+                  }],
+                  { agent: lastUser.agent, model: lastUser.model },
+                )
               }
             }
 
@@ -1872,25 +1890,6 @@ export const layer = Layer.effect(
               const parts = injectedParts.length > 0
                 ? injectedParts
                 : [{ type: "text" as const, text: defaultPrompt, synthetic: true as const }]
-              const continueMsg: SessionV1.User = {
-                id: MessageID.ascending(),
-                sessionID,
-                role: "user",
-                time: { created: Date.now() },
-                agent: lastUser.agent,
-                model: lastUser.model,
-              }
-              yield* sessions.updateMessage(continueMsg)
-              for (const p of parts) {
-                yield* sessions.updatePart({
-                  id: PartID.ascending(),
-                  messageID: continueMsg.id,
-                  sessionID,
-                  type: "text",
-                  text: p.text,
-                  synthetic: p.synthetic ?? true,
-                } satisfies SessionV1.TextPart)
-              }
               // 永续模式注入后检查 compaction overflow，防止消息无限积累
               if (lastFinished && lastFinished.summary !== true) {
                 const overflow = yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }).pipe(
@@ -1906,7 +1905,10 @@ export const layer = Layer.effect(
                   })
                 }
               }
-              return "continue" as const
+              return yield* injectAndContinue(
+                parts.map((p) => ({ text: p.text, synthetic: p.synthetic ?? true })),
+                { agent: lastUser.agent, model: lastUser.model },
+              )
             }
             if (result === "stop") return "break" as const
             // 上下文充足后退出循环：
@@ -2019,23 +2021,11 @@ export const layer = Layer.effect(
             )
             const { user: lastUser } = MessageV2.latest(msgs)
             if (lastUser) {
-              const evolveUserMsg: SessionV1.User = {
-                id: MessageID.ascending(),
-                sessionID: input.sessionID,
-                role: "user",
-                time: { created: Date.now() },
-                agent: lastUser.agent,
-                model: lastUser.model,
-              }
-              yield* sessions.updateMessage(evolveUserMsg)
-              yield* sessions.updatePart({
-                id: PartID.ascending(),
-                messageID: evolveUserMsg.id,
-                sessionID: input.sessionID,
-                type: "text",
-                text: evolveMsg,
-                synthetic: true,
-              } satisfies SessionV1.TextPart)
+              yield* createUserTextMessage(
+                input.sessionID,
+                [{ text: evolveMsg }],
+                lastUser,
+              )
             }
           }
         }
@@ -2084,23 +2074,11 @@ export const layer = Layer.effect(
             const source = cfg.forever?.prompt?.source as { type: string; command?: string; args?: string[]; url?: string; text?: string } | undefined
             const defaultText = cfg.forever?.prompt?.default ?? "Continue the forever mode task."
             const prompt = yield* resolveForeverPrompt(source, defaultText)
-            const continueMsg: SessionV1.User = {
-              id: MessageID.ascending(),
-              sessionID: input.sessionID,
-              role: "user",
-              time: { created: Date.now() },
-              agent: lastUser.agent,
-              model: lastUser.model,
-            }
-            yield* sessions.updateMessage(continueMsg)
-            yield* sessions.updatePart({
-              id: PartID.ascending(),
-              messageID: continueMsg.id,
-              sessionID: input.sessionID,
-              type: "text",
-              text: prompt,
-              synthetic: true,
-            } satisfies SessionV1.TextPart)
+            yield* createUserTextMessage(
+              input.sessionID,
+              [{ text: prompt }],
+              lastUser,
+            )
           }
         }
 
