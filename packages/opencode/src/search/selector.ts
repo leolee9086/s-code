@@ -26,7 +26,7 @@ import { makeVueDocs } from "./engines/vue-docs"
 import { makePythonDocs } from "./engines/python-docs"
 import { makeGitHubIssues } from "./engines/github-issues"
 import { makeGitHubRepoFiles } from "./engines/github-repo-files"
-import { makeUnsplash, makePixabay, makePubMed, makeHackerNews, makeDockerHub, makeNpm } from "./engines/open-api"
+import { makeUnsplash, makePixabay, makePubMed, makeHackerNews, makeDockerHub, makeNpm, makeCoinGecko, makeNominatim, makeCore, makeMarginalia, makePodchaser, make9GAG, makeFrinkiac, makeZLibrary, makeAppleAppStore, makeMediaWiki, makePackagist, makeRubyGems, makePubDev, makeMankier, makeWiby, makeEncyclosearch, makeOpenAirePublications, makeHoogle, makeEtymonline } from "./engines/open-api"
 import { makeBingImages } from "./engines/bing-images"
 import { makeSogou } from "./engines/sogou"
 import { make360Search } from "./engines/360search"
@@ -172,7 +172,22 @@ import { makeVip } from "./engines/vip"
 import { makeYipin } from "./engines/yipin"
 import { makeDangdang } from "./engines/dangdang"
 import { makeKaola } from "./engines/kaola"
-
+// 新增专用引擎导入
+import { makeBbcNews } from "./engines/bbc-news"
+import { makeTheGuardian } from "./engines/theguardian"
+import { makeTechCrunch } from "./engines/techcrunch"
+import { makeTheVerge } from "./engines/theverge"
+import { makeArsTechnica } from "./engines/arstechnica"
+import { makeYahooFinance } from "./engines/yahoo-finance"
+import { makeFred } from "./engines/fred"
+import { makeZenodo } from "./engines/zenodo"
+import { makeOpenFoodFacts } from "./engines/openfoodfacts"
+import { makeMusicBrainz } from "./engines/musicbrainz"
+import { makeAds } from "./engines/ads"
+import { makeIgdb } from "./engines/igdb"
+import { makeRawg } from "./engines/rawg"
+import { makeTvMaze } from "./engines/tvmaze"
+import { makeOpenWeather } from "./engines/openweather"
 
 /**
  * 站点限定搜索引擎配置
@@ -180,7 +195,7 @@ import { makeKaola } from "./engines/kaola"
  * 只要目标站点被搜索引擎索引即可工作
  */
 const SITE_SCOPED_ENGINES = [
-  // 中文社交/内容平台
+  // ── 中文社交/内容平台 ──
   { domain: "weibo.com", name: "weibo", label: "微博" },
   { domain: "tieba.baidu.com", name: "tieba", label: "百度贴吧" },
   { domain: "douban.com", name: "douban", label: "豆瓣" },
@@ -190,21 +205,151 @@ const SITE_SCOPED_ENGINES = [
   { domain: "36kr.com", name: "36kr", label: "36氪" },
   { domain: "jianshu.com", name: "jianshu", label: "简书" },
   { domain: "zhuanlan.zhihu.com", name: "zhihu-column", label: "知乎专栏" },
-  // 技术社区
+  // ── 中文技术社区 ──
   { domain: "csdn.net", name: "csdn", label: "CSDN" },
   { domain: "oschina.net", name: "oschina", label: "开源中国" },
   { domain: "segmentfault.com", name: "segmentfault", label: "思否" },
   { domain: "juejin.cn", name: "juejin", label: "掘金" },
   { domain: "v2ex.com", name: "v2ex", label: "V2EX" },
-  // 新闻门户
+  // ── 中文新闻门户 ──
   { domain: "163.com", name: "163", label: "网易" },
   { domain: "sohu.com", name: "sohu", label: "搜狐" },
   { domain: "qq.com", name: "qq", label: "腾讯新闻" },
-  // 垂直社区
+  { domain: "thepaper.cn", name: "thepaper", label: "澎湃新闻" },
+  { domain: "ifeng.com", name: "ifeng", label: "凤凰网" },
+  { domain: "sina.com.cn", name: "sina", label: "新浪" },
+  // ── 中文垂直社区 ──
   { domain: "douyin.com", name: "douyin", label: "抖音" },
   { domain: "kuaishou.com", name: "kuaishou", label: "快手" },
   { domain: "hupu.com", name: "hupu", label: "虎扑" },
   { domain: "smzdm.com", name: "smzdm", label: "什么值得买" },
+  // ── 国际新闻 ──
+  { domain: "bbc.com", name: "bbc", label: "BBC News" },
+  { domain: "cnn.com", name: "cnn", label: "CNN" },
+  { domain: "nytimes.com", name: "nytimes", label: "纽约时报" },
+  { domain: "washingtonpost.com", name: "washingtonpost", label: "华盛顿邮报" },
+  { domain: "theguardian.com", name: "theguardian", label: "卫报" },
+  { domain: "npr.org", name: "npr", label: "NPR" },
+  { domain: "aljazeera.com", name: "aljazeera", label: "半岛电视台" },
+  { domain: "apnews.com", name: "apnews", label: "美联社" },
+  { domain: "bloomberg.com", name: "bloomberg", label: "彭博社" },
+  { domain: "ft.com", name: "ft", label: "金融时报" },
+  { domain: "economist.com", name: "economist", label: "经济学人" },
+  { domain: "time.com", name: "time", label: "时代周刊" },
+  { domain: "abc.net.au", name: "abc-au", label: "ABC Australia" },
+  { domain: "cbc.ca", name: "cbc", label: "CBC Canada" },
+  // ── 科技新闻 ──
+  { domain: "techcrunch.com", name: "techcrunch", label: "TechCrunch" },
+  { domain: "theverge.com", name: "theverge", label: "The Verge" },
+  { domain: "wired.com", name: "wired", label: "Wired" },
+  { domain: "arstechnica.com", name: "arstechnica", label: "Ars Technica" },
+  { domain: "zdnet.com", name: "zdnet", label: "ZDNet" },
+  { domain: "engadget.com", name: "engadget", label: "Engadget" },
+  { domain: "gizmodo.com", name: "gizmodo", label: "Gizmodo" },
+  { domain: "tomshardware.com", name: "tomshardware", label: "Tom's Hardware" },
+  { domain: "anandtech.com", name: "anandtech", label: "AnandTech" },
+  { domain: "macrumors.com", name: "macrumors", label: "MacRumors" },
+  // ── 编程问答 ──
+  { domain: "stackoverflow.com", name: "stackoverflow", label: "Stack Overflow" },
+  { domain: "serverfault.com", name: "serverfault", label: "Server Fault" },
+  { domain: "superuser.com", name: "superuser", label: "Super User" },
+  { domain: "askubuntu.com", name: "askubuntu", label: "Ask Ubuntu" },
+  { domain: "mathoverflow.net", name: "mathoverflow", label: "MathOverflow" },
+  // ── 金融数据 ──
+  { domain: "finance.yahoo.com", name: "yahoo-finance", label: "Yahoo Finance" },
+  { domain: "marketwatch.com", name: "marketwatch", label: "MarketWatch" },
+  { domain: "coingecko.com", name: "coingecko", label: "CoinGecko" },
+  { domain: "coinmarketcap.com", name: "coinmarketcap", label: "CoinMarketCap" },
+  { domain: "investing.com", name: "investing", label: "Investing.com" },
+  { domain: "seekingalpha.com", name: "seekingalpha", label: "Seeking Alpha" },
+  { domain: "tradingview.com", name: "tradingview", label: "TradingView" },
+  { domain: "investopedia.com", name: "investopedia", label: "Investopedia" },
+  // ── 政府与数据门户 ──
+  { domain: "data.gov", name: "data-gov", label: "Data.gov" },
+  { domain: "data.gov.uk", name: "data-gov-uk", label: "Data.gov.uk" },
+  { domain: "data.europa.eu", name: "data-europa", label: "EU Open Data" },
+  { domain: "worldbank.org", name: "worldbank", label: "世界银行" },
+  { domain: "who.int", name: "who", label: "WHO" },
+  { domain: "cdc.gov", name: "cdc", label: "CDC" },
+  { domain: "nhs.uk", name: "nhs", label: "NHS" },
+  { domain: "gov.cn", name: "gov-cn", label: "中国政府网" },
+  // ── 旅游与本地服务 ──
+  { domain: "tripadvisor.com", name: "tripadvisor", label: "TripAdvisor" },
+  { domain: "yelp.com", name: "yelp", label: "Yelp" },
+  { domain: "booking.com", name: "booking", label: "Booking.com" },
+  { domain: "lonelyplanet.com", name: "lonelyplanet", label: "Lonely Planet" },
+  { domain: "wikivoyage.org", name: "wikivoyage", label: "Wikivoyage" },
+  // ── 求职招聘 ──
+  { domain: "indeed.com", name: "indeed", label: "Indeed" },
+  { domain: "glassdoor.com", name: "glassdoor", label: "Glassdoor" },
+  { domain: "monster.com", name: "monster", label: "Monster" },
+  { domain: "levels.fyi", name: "levels-fyi", label: "Levels.fyi" },
+  // ── 食谱美食 ──
+  { domain: "allrecipes.com", name: "allrecipes", label: "AllRecipes" },
+  { domain: "foodnetwork.com", name: "foodnetwork", label: "Food Network" },
+  { domain: "seriouseats.com", name: "seriouseats", label: "Serious Eats" },
+  // ── 游戏 ──
+  { domain: "store.epicgames.com", name: "epicgames", label: "Epic Games" },
+  { domain: "gog.com", name: "gog", label: "GOG" },
+  { domain: "itch.io", name: "itchio", label: "itch.io" },
+  { domain: "metacritic.com", name: "metacritic", label: "Metacritic" },
+  { domain: "howlongtobeat.com", name: "howlongtobeat", label: "HowLongToBeat" },
+  // ── 书籍与文献 ──
+  { domain: "books.google.com", name: "google-books", label: "Google Books" },
+  { domain: "gutenberg.org", name: "gutenberg", label: "Project Gutenberg" },
+  { domain: "librivox.org", name: "librivox", label: "LibriVox" },
+  // ── 设计与前端 ──
+  { domain: "dribbble.com", name: "dribbble", label: "Dribbble" },
+  { domain: "behance.net", name: "behance", label: "Behance" },
+  { domain: "codepen.io", name: "codepen", label: "CodePen" },
+  { domain: "caniuse.com", name: "caniuse", label: "Can I Use" },
+  { domain: "css-tricks.com", name: "css-tricks", label: "CSS-Tricks" },
+  // ── 百科与词典 ──
+  { domain: "britannica.com", name: "britannica", label: "大英百科" },
+  { domain: "merriam-webster.com", name: "merriam-webster", label: "Merriam-Webster" },
+  { domain: "dictionary.com", name: "dictionary", label: "Dictionary.com" },
+  { domain: "thesaurus.com", name: "thesaurus", label: "Thesaurus.com" },
+  { domain: "etymonline.com", name: "etymonline", label: "Etymonline" },
+  // ── 论坛与讨论 ──
+  { domain: "news.ycombinator.com", name: "hackernews", label: "Hacker News" },
+  { domain: "medium.com", name: "medium", label: "Medium" },
+  { domain: "quora.com", name: "quora", label: "Quora" },
+  { domain: "producthunt.com", name: "producthunt", label: "Product Hunt" },
+  { domain: "dev.to", name: "devto", label: "DEV Community" },
+  // ── 科学数据库 ──
+  { domain: "pubmed.ncbi.nlm.nih.gov", name: "pubmed", label: "PubMed" },
+  { domain: "biorxiv.org", name: "biorxiv", label: "bioRxiv" },
+  { domain: "medrxiv.org", name: "medrxiv", label: "medRxiv" },
+  { domain: "doi.org", name: "doi", label: "DOI" },
+  // ── 学术 ──
+  { domain: "scholar.google.com", name: "google-scholar", label: "Google Scholar" },
+  { domain: "researchgate.net", name: "researchgate", label: "ResearchGate" },
+  { domain: "academia.edu", name: "academia", label: "Academia.edu" },
+  { domain: "jstor.org", name: "jstor", label: "JSTOR" },
+  { domain: "ssrn.com", name: "ssrn", label: "SSRN" },
+  // ── 影音娱乐 ──
+  { domain: "imdb.com", name: "imdb", label: "IMDb" },
+  { domain: "rottentomatoes.com", name: "rottentomatoes", label: "Rotten Tomatoes" },
+  { domain: "goodreads.com", name: "goodreads", label: "Goodreads" },
+  { domain: "letterboxd.com", name: "letterboxd", label: "Letterboxd" },
+  { domain: "trakt.tv", name: "trakt", label: "Trakt" },
+  // ── 音乐 ──
+  { domain: "spotify.com", name: "spotify", label: "Spotify" },
+  { domain: "music.apple.com", name: "apple-music", label: "Apple Music" },
+  { domain: "last.fm", name: "lastfm", label: "Last.fm" },
+  { domain: "discogs.com", name: "discogs", label: "Discogs" },
+  // ── 软件包仓库 ──
+  { domain: "npmjs.com", name: "npmjs", label: "npm" },
+  { domain: "rubygems.org", name: "rubygems", label: "RubyGems" },
+  { domain: "packagist.org", name: "packagist", label: "Packagist" },
+  { domain: "nuget.org", name: "nuget", label: "NuGet" },
+  // ── 法律与专利 ──
+  { domain: "law.cornell.edu", name: "cornell-law", label: "Cornell Law" },
+  { domain: "patents.google.com", name: "google-patents", label: "Google Patents" },
+  // ── 其他 ──
+  { domain: "archive.org", name: "archive", label: "Internet Archive" },
+  { domain: "wolframalpha.com", name: "wolframalpha", label: "Wolfram Alpha" },
+  { domain: "oeis.org", name: "oeis", label: "OEIS" },
 ] as const
 
 export interface SelectFlags {
@@ -978,6 +1123,26 @@ export function selectEngines(
     // 代码仓库
     engines.push(makeNpm(makeEngineConfig({ name: "npm", weight: 0.7, timeout: 10000, maxResults: 5, requiresKey: false })))
     engines.push(makeDockerHub(makeEngineConfig({ name: "dockerhub", weight: 0.6, timeout: 10000, maxResults: 5, requiresKey: false })))
+    // 金融
+    engines.push(makeCoinGecko(makeEngineConfig({ name: "coingecko", weight: 0.7, timeout: 10000, maxResults: 5, requiresKey: false })))
+    // 地理
+    engines.push(makeNominatim(makeEngineConfig({ name: "nominatim", weight: 0.6, timeout: 15000, maxResults: 5, requiresKey: false })))
+    // 学术
+    engines.push(makeCore(makeEngineConfig({ name: "core", weight: 0.7, timeout: 10000, maxResults: 5, requiresKey: false })))
+    // 独立搜索
+    engines.push(makeMarginalia(makeEngineConfig({ name: "marginalia", weight: 0.5, timeout: 15000, maxResults: 5, requiresKey: false })))
+    // 播客
+    engines.push(makePodchaser(makeEngineConfig({ name: "podchaser", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false })))
+    // 趣味内容
+    engines.push(make9GAG(makeEngineConfig({ name: "9gag", weight: 0.4, timeout: 10000, maxResults: 5, requiresKey: false })))
+    engines.push(makeFrinkiac(makeEngineConfig({ name: "frinkiac", weight: 0.3, timeout: 10000, maxResults: 3, requiresKey: false })))
+    // 书籍
+    engines.push(makeZLibrary(makeEngineConfig({ name: "z-library", weight: 0.5, timeout: 15000, maxResults: 5, requiresKey: false })))
+    // 应用商店
+    engines.push(makeAppleAppStore(makeEngineConfig({ name: "apple-app-store", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false })))
+    // 百科（非 Wikipedia）
+    engines.push(makeMediaWiki(makeEngineConfig({ name: "britannica-wiki", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false }), "en.wiktionary.org"))
+    engines.push(makeMediaWiki(makeEngineConfig({ name: "wikivoyage", weight: 0.4, timeout: 10000, maxResults: 5, requiresKey: false }), "en.wikivoyage.org"))
     // Q&A
     engines.push(makeStackExchange(makeEngineConfig({ name: "stackexchange", weight: 0.8, timeout: 10000, maxResults: 5, requiresKey: false })))
   }
@@ -2170,6 +2335,40 @@ export function selectEngines(
       e.config.maxResults = Math.max(e.config.maxResults, 10)
     }
   }
+
+  // ── 新增引擎注册（批量）─────────────────────────────
+  // 新闻
+  if (!flags || flags?.queryType === "news" || !flags?.queryType) {
+    engines.push(makeBbcNews(makeEngineConfig({ name: "bbc-news", weight: 0.8, timeout: 12000, maxResults: 5, requiresKey: false })))
+    engines.push(makeTheGuardian(makeEngineConfig({ name: "theguardian", weight: 0.7, timeout: 12000, maxResults: 5, requiresKey: false })))
+    engines.push(makeTechCrunch(makeEngineConfig({ name: "techcrunch", weight: 0.7, timeout: 10000, maxResults: 5, requiresKey: false })))
+    engines.push(makeTheVerge(makeEngineConfig({ name: "theverge", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+    engines.push(makeArsTechnica(makeEngineConfig({ name: "arstechnica", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  }
+  // 金融
+  engines.push(makeYahooFinance(makeEngineConfig({ name: "yahoo-finance", weight: 0.7, timeout: 10000, maxResults: 5, requiresKey: false })))
+  engines.push(makeFred(makeEngineConfig({ name: "fred", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  // 学术
+  engines.push(makeZenodo(makeEngineConfig({ name: "zenodo", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeAds(makeEngineConfig({ name: "ads", weight: 0.6, timeout: 15000, maxResults: 5, requiresKey: false })))
+  engines.push(makeOpenAirePublications(makeEngineConfig({ name: "openaire", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  // 包管理器
+  engines.push(makePackagist(makeEngineConfig({ name: "packagist", weight: 0.6, timeout: 10000, maxResults: 5, requiresKey: false })))
+  engines.push(makeRubyGems(makeEngineConfig({ name: "rubygems", weight: 0.6, timeout: 10000, maxResults: 5, requiresKey: false })))
+  engines.push(makePubDev(makeEngineConfig({ name: "pub-dev", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false })))
+  engines.push(makeMankier(makeEngineConfig({ name: "mankier", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false })))
+  engines.push(makeHoogle(makeEngineConfig({ name: "hoogle", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false })))
+  // 通用/专项
+  engines.push(makeWiby(makeEngineConfig({ name: "wiby", weight: 0.5, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeEncyclosearch(makeEngineConfig({ name: "encyclosearch", weight: 0.5, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeEtymonline(makeEngineConfig({ name: "etymonline", weight: 0.5, timeout: 10000, maxResults: 5, requiresKey: false })))
+  // 食品/音乐/游戏/影视/天气
+  engines.push(makeOpenFoodFacts(makeEngineConfig({ name: "openfoodfacts", weight: 0.5, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeMusicBrainz(makeEngineConfig({ name: "musicbrainz", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeIgdb(makeEngineConfig({ name: "igdb", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeRawg(makeEngineConfig({ name: "rawg", weight: 0.6, timeout: 12000, maxResults: 5, requiresKey: false })))
+  engines.push(makeTvMaze(makeEngineConfig({ name: "tvmaze", weight: 0.6, timeout: 10000, maxResults: 5, requiresKey: false })))
+  engines.push(makeOpenWeather(makeEngineConfig({ name: "openweather", weight: 0.6, timeout: 10000, maxResults: 1, requiresKey: true })))
 
   return engines
 }
