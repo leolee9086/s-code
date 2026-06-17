@@ -8,6 +8,8 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Search } from "@/search"
 import { getGlobalRateLimiter } from "@/search/rate-limiter"
 import type { ProgressCallback } from "@/search/executor"
+import { detectProxyConfig, applyProxyEnv } from "@/search/proxy"
+import { Question } from "../question"
 
 /** 传给前端的逐条结果预览（精简字段，避免 payload 过大） */
 export interface LatestResultPreview {
@@ -126,15 +128,22 @@ function callMultiEngine(
     const intent = Search.QueryIntent.detectQueryIntent(params.query ?? "")
     const effectiveQueryType = params.queryType || intent.queryType || "general"
 
-    const engines = Search.Selector.selectEngines({
-      brave: !!process.env.BRAVE_API_KEY,
-      bilibili: true,
-      exa: flags.exa,
-      parallel: flags.parallel,
-      timeRange: params.timeRange,
-      lang: params.lang,
-      queryType: effectiveQueryType,
-    })
+    // 当用户未传任何过滤参数时（纯 general 搜索），不传 flags，
+    // 让 selectEngines 内部的 `if (!flags)` 分支生效，包含所有引擎
+    const hasUserFilters = params.queryType !== undefined
+      || params.timeRange !== undefined
+      || params.lang !== undefined
+    const engines = hasUserFilters
+      ? Search.Selector.selectEngines({
+          brave: !!process.env.BRAVE_API_KEY,
+          bilibili: true,
+          exa: flags.exa,
+          parallel: flags.parallel,
+          timeRange: params.timeRange,
+          lang: params.lang,
+          queryType: effectiveQueryType,
+        })
+      : Search.Selector.selectEngines()
     if (engines.length === 0) return { output: undefined, engines: [] }
 
     // 如果指定了 platforms 参数，只保留匹配的购物引擎
@@ -312,6 +321,7 @@ export const WebSearchTool = Tool.define(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
+    const question = yield* Question.Service
 
     return {
       get description() {
@@ -341,6 +351,35 @@ export const WebSearchTool = Tool.define(
               provider,
             },
           })
+
+          // 检测系统代理并请求用户确认
+          // Bun fetch 原生支持 HTTP_PROXY/HTTPS_PROXY 环境变量，设置后所有
+          // 搜索引擎（DuckDuckGo、Google、Yandex、Z-Library 等）可通过代理访问
+          const proxyConfig = yield* detectProxyConfig().pipe(
+            Effect.catch(() => Effect.succeed<import("@/search/proxy").ProxyConfig>({})),
+          )
+          if (proxyConfig.http || proxyConfig.https) {
+            const answers = yield* question.ask({
+              sessionID: ctx.sessionID,
+              questions: [{
+                question:
+                  `检测到系统代理 ${proxyConfig.http ?? proxyConfig.https}，是否启用？` +
+                  "启用后可通过 DuckDuckGo、Google、Yandex、Z-Library 等国际搜索引擎获取更全面的结果。",
+                header: "启用代理",
+                custom: false,
+                options: [
+                  { label: "是", description: "通过代理访问国际搜索引擎" },
+                  { label: "否", description: "仅使用国内可直接访问的搜索引擎（百度、Bing 等）" },
+                ],
+              }],
+              tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+            }).pipe(
+              Effect.catch(() => Effect.succeed([] as ReadonlyArray<ReadonlyArray<string>>)),
+            )
+            if (answers[0]?.[0] === "是") {
+              applyProxyEnv(proxyConfig)
+            }
+          }
 
           if (!providerAvailable(provider)) {
             return {

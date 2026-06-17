@@ -1113,8 +1113,7 @@ export function selectEngines(
     })))
   }
 
-  // 开放 API 引擎族（图片、新闻、代码）
-  if (!flags) {
+  // 开放 API 引擎族（图片、新闻、代码、书籍、金融等）
     // 图片
     engines.push(makeUnsplash(makeEngineConfig({ name: "unsplash", weight: 0.7, timeout: 10000, maxResults: 4, requiresKey: false })))
     // 新闻
@@ -1146,7 +1145,6 @@ export function selectEngines(
     engines.push(makeMediaWiki(makeEngineConfig({ name: "wikivoyage", weight: 0.4, timeout: 10000, maxResults: 5, requiresKey: false }), "en.wikivoyage.org"))
     // Q&A
     engines.push(makeStackExchange(makeEngineConfig({ name: "stackexchange", weight: 0.8, timeout: 10000, maxResults: 5, requiresKey: false })))
-  }
 
   // 电影/娱乐类查询：IMDb
   if (!flags || flags?.queryType === "video") {
