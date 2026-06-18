@@ -424,6 +424,7 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
         })
       },
       "session.banned_phrases": () => Effect.void,
+      "session.proxy_state": () => Effect.void,
     })
   })
 }

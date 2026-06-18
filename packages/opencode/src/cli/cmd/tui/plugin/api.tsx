@@ -162,6 +162,9 @@ function stateApi(sync: ReturnType<typeof useSync>): TuiPluginApi["state"] {
       banned_phrases(sessionID) {
         return sync.data.banned_phrases[sessionID] ?? []
       },
+      proxy_state(sessionID) {
+        return sync.data.proxy_state[sessionID] ?? null
+      },
       messages(sessionID) {
         return sync.data.message[sessionID] ?? []
       },

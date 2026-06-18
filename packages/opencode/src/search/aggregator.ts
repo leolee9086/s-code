@@ -20,20 +20,27 @@ export function normalizeUrl(url: string): string {
 
 function levenshtein(a: string, b: string): number {
   const m = a.length; const n = b.length
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
+  if (m === 0) return n
+  if (n === 0) return m
+  // 滚动数组：只用两行替代 m×n 二维数组，空间 O(n)
+  let prev = new Array<number>(n + 1)
+  let curr = new Array<number>(n + 1)
+  for (let j = 0; j <= n; j++) prev[j] = j
   for (let i = 1; i <= m; i++) {
+    curr[0] = i
     for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]) + 1
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : Math.min(prev[j], curr[j - 1], prev[j - 1]) + 1
     }
+    [prev, curr] = [curr, prev]
   }
-  return dp[m][n]
+  return prev[n]
 }
 
 function isSimilarTitle(a: string, b: string): boolean {
+  // 快速路径：完全相同直接返回
+  if (a === b) return true
   const maxLen = Math.max(a.length, b.length)
   if (maxLen === 0) return true
   // 快速路径：长度差异超过 30% 直接跳过

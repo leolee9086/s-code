@@ -6,6 +6,7 @@ import SidebarLsp from "../feature-plugins/sidebar/lsp"
 import SidebarTodo from "../feature-plugins/sidebar/todo"
 import SidebarFiles from "../feature-plugins/sidebar/files"
 import SidebarBannedPhrases from "../feature-plugins/sidebar/banned-phrases"
+import SidebarProxyToggle from "../feature-plugins/sidebar/proxy-toggle"
 import SidebarFooter from "../feature-plugins/sidebar/footer"
 import PluginManager from "../feature-plugins/system/plugins"
 import Notifications from "../feature-plugins/system/notifications"
@@ -33,6 +34,7 @@ export function internalTuiPlugins(flags: Pick<RuntimeFlags.Info, "experimentalE
     SidebarTodo,
     SidebarFiles,
     SidebarBannedPhrases,
+    SidebarProxyToggle,
     SidebarFooter,
     Notifications,
     PluginManager,

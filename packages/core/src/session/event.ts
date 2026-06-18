@@ -466,6 +466,19 @@ export const BannedPhrases = EventV2.define({
 })
 export type BannedPhrases = typeof BannedPhrases.Type
 
+export const ProxyState = EventV2.define({
+  type: "session.proxy_state",
+  ...options,
+  schema: {
+    sessionID: SessionSchema.ID,
+    state: Schema.Struct({
+      decision: Schema.Literals(["enabled", "disabled"]),
+      proxyUrl: Schema.String,
+    }).pipe(Schema.optional),
+  },
+})
+export type ProxyState = typeof ProxyState.Type
+
 const DurableDefinitions = [
   AgentSwitched,
   ModelSwitched,
@@ -495,6 +508,7 @@ const DurableDefinitions = [
   Compaction.Delta,
   Compaction.Ended,
   BannedPhrases,
+  ProxyState,
 ] as const
 const EphemeralDefinitions = [Text.Delta, Tool.Input.Delta, Reasoning.Delta] as const
 

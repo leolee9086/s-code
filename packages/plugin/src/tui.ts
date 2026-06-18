@@ -389,6 +389,7 @@ export type TuiState = {
     diff: (sessionID: string) => ReadonlyArray<TuiSidebarFileItem>
     todo: (sessionID: string) => ReadonlyArray<TuiSidebarTodoItem>
     banned_phrases: (sessionID: string) => ReadonlyArray<{ phrase: string; grace: number; maxGrace: number }>
+    proxy_state: (sessionID: string) => { decision: "enabled" | "disabled"; proxyUrl: string } | null
     messages: (sessionID: string) => ReadonlyArray<Message>
     status: (sessionID: string) => SessionStatus | undefined
     permission: (sessionID: string) => ReadonlyArray<PermissionRequest>

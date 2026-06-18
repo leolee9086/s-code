@@ -8,7 +8,8 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Search } from "@/search"
 import { getGlobalRateLimiter } from "@/search/rate-limiter"
 import type { ProgressCallback } from "@/search/executor"
-import { detectProxyConfig, applyProxyEnv } from "@/search/proxy"
+import { detectProxyConfig } from "@/search/proxy"
+import * as ProxyState from "@/search/proxy-state"
 import { Question } from "../question"
 
 /** 传给前端的逐条结果预览（精简字段，避免 payload 过大） */
@@ -352,32 +353,39 @@ export const WebSearchTool = Tool.define(
             },
           })
 
-          // 检测系统代理并请求用户确认
+          // 代理决策：按 session 记忆，同一次对话只询问一次
           // Bun fetch 原生支持 HTTP_PROXY/HTTPS_PROXY 环境变量，设置后所有
           // 搜索引擎（DuckDuckGo、Google、Yandex、Z-Library 等）可通过代理访问
-          const proxyConfig = yield* detectProxyConfig().pipe(
-            Effect.catch(() => Effect.succeed<import("@/search/proxy").ProxyConfig>({})),
-          )
-          if (proxyConfig.http || proxyConfig.https) {
-            const answers = yield* question.ask({
-              sessionID: ctx.sessionID,
-              questions: [{
-                question:
-                  `检测到系统代理 ${proxyConfig.http ?? proxyConfig.https}，是否启用？` +
-                  "启用后可通过 DuckDuckGo、Google、Yandex、Z-Library 等国际搜索引擎获取更全面的结果。",
-                header: "启用代理",
-                custom: false,
-                options: [
-                  { label: "是", description: "通过代理访问国际搜索引擎" },
-                  { label: "否", description: "仅使用国内可直接访问的搜索引擎（百度、Bing 等）" },
-                ],
-              }],
-              tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-            }).pipe(
-              Effect.catch(() => Effect.succeed([] as ReadonlyArray<ReadonlyArray<string>>)),
+          const existing = yield* ProxyState.getDecision(ctx.sessionID)
+          if (!existing) {
+            // pending 状态：首次检测代理并询问用户
+            const proxyConfig = yield* detectProxyConfig().pipe(
+              Effect.catch(() => Effect.succeed<import("@/search/proxy").ProxyConfig>({})),
             )
-            if (answers[0]?.[0] === "是") {
-              applyProxyEnv(proxyConfig)
+            if (proxyConfig.http || proxyConfig.https) {
+              const proxyUrl = proxyConfig.http ?? proxyConfig.https!
+              const answers = yield* question.ask({
+                sessionID: ctx.sessionID,
+                questions: [{
+                  question:
+                    `检测到系统代理 ${proxyUrl}，是否启用？` +
+                    "启用后可通过 DuckDuckGo、Google、Yandex、Z-Library 等国际搜索引擎获取更全面的结果。",
+                  header: "启用代理",
+                  custom: false,
+                  options: [
+                    { label: "是", description: "通过代理访问国际搜索引擎" },
+                    { label: "否", description: "仅使用国内可直接访问的搜索引擎（百度、Bing 等）" },
+                  ],
+                }],
+                tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+              }).pipe(
+                Effect.catch(() => Effect.succeed([] as ReadonlyArray<ReadonlyArray<string>>)),
+              )
+              if (answers[0]?.[0] === "是") {
+                yield* ProxyState.enable(ctx.sessionID, proxyUrl)
+              } else {
+                yield* ProxyState.disable(ctx.sessionID)
+              }
             }
           }
 

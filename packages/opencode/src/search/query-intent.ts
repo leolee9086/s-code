@@ -163,7 +163,7 @@ export function detectQueryIntent(query: string): QueryIntent & GitHubIntent {
   const trimmed = query.trim()
   if (!trimmed) return {}
 
-  // 1. URL → 通用搜索（让 site-scoped 处理）
+  // 1. URL → 通用搜索
   if (URL_PATTERN.test(trimmed)) {
     return { queryType: "general" }
   }

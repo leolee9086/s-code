@@ -4,6 +4,14 @@
 import { Data, Duration, Effect } from "effect"
 import { HttpClient } from "effect/unstable/http"
 
+// ── 工具函数 ──────────────────────────────────────────
+
+const REGEX_STRIP_TAGS = /<[^>]+>/g
+
+export function stripHtml(text: string): string {
+  return text.replace(REGEX_STRIP_TAGS, "").replace(/"/g, '"').trim()
+}
+
 // ── 搜索结果 ──────────────────────────────────────────
 
 export interface SearchResult {

@@ -12,7 +12,7 @@
 import { Effect } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import type { EngineConfig, SearchEngine, SearchOptions, SearchResult } from "../engine"
-import { makeSearchResult } from "../engine"
+import { makeSearchResult, stripHtml } from "../engine"
 
 const BASE_URL = "https://www.zhihu.com"
 const USER_AGENT =
@@ -59,97 +59,81 @@ function searchZhihu(
 }
 
 export function parseZhihuResults(html: string, maxResults: number): SearchResult[] {
+  // 多种匹配模式依次尝试，第一个产生结果的模式胜出
+  const patterns = [
+    // 模式 1：搜索结果的通用结构
+    {
+      regex: /<a[^>]*class="[^"]*[Ee]ntry[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p[^>]*class="[^"]*[Rr]ich[Cc]ontent[^"]*"[^>]*>([\s\S]*?)<\/p>/gi,
+      extract(m: RegExpExecArray) {
+        const href = m[1].trim()
+        const title = stripHtml(m[2])
+        const snippet = stripHtml(m[3] ?? "")
+        if (!title || !href) return null
+        return { title, href: normalizeZhihuUrl(href), snippet: snippet || "知乎内容" }
+      },
+    },
+    // 模式 2：搜索结果卡片（知乎新版页面）
+    {
+      regex: /<div[^>]*class="[^"]*[Ss]earch[_-][Rr]esult[_-][Ii]tem[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*[Rr]ich[Ww]ord[^"]*"[^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/a>/gi,
+      extract(m: RegExpExecArray) {
+        const href = m[1].trim()
+        const title = stripHtml(m[2])
+        if (!title || !href) return null
+        return { title, href: normalizeZhihuUrl(href), snippet: "知乎回答" }
+      },
+    },
+    // 模式 3：兜底——任何带知乎链接和标题的 a 标签
+    {
+      regex: /<a[^>]*href="(\/question\/[^"]*|\/answer\/[^"]*|\/people\/[^"]*|\/p\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+      extract(m: RegExpExecArray) {
+        const href = m[1].trim()
+        const title = stripHtml(m[2])
+        if (!title) return null
+        return { title, href: `${BASE_URL}${href}`, snippet: "知乎内容" }
+      },
+    },
+  ]
+
+  for (const { regex, extract } of patterns) {
+    const results = tryParsePattern(html, maxResults, regex, extract)
+    if (results.length > 0) return results
+  }
+  return []
+}
+
+function tryParsePattern(
+  html: string,
+  maxResults: number,
+  pattern: RegExp,
+  extract: (m: RegExpExecArray) => { title: string; href: string; snippet: string } | null,
+): SearchResult[] {
   const results: SearchResult[] = []
-  let pos = 0
-
-  // 尝试多种匹配模式
-
-  // 模式 1：搜索结果的通用结构
-  const pattern1 = /<a[^>]*class="[^"]*[Ee]ntry[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<p[^>]*class="[^"]*[Rr]ich[Cc]ontent[^"]*"[^>]*>([\s\S]*?)<\/p>/gi
-
   let match: RegExpExecArray | null
-  while ((match = pattern1.exec(html)) !== null) {
+  while ((match = pattern.exec(html)) !== null) {
     if (results.length >= maxResults) break
-
-    let href = match[1].trim()
-    const title = match[2].replace(/<[^>]+>/g, "").trim()
-    const snippet = match[3]?.replace(/<[^>]+>/g, "").trim() || ""
-
-    if (!title || !href) continue
-
-    // 处理相对 URL
-    if (href.startsWith("/")) href = `${BASE_URL}${href}`
-    else if (!href.startsWith("http")) href = `${BASE_URL}/${href}`
-
-    pos++
-    results.push(
-      makeSearchResult({
-        title,
-        url: href,
-        snippet: snippet || "知乎内容",
-        engine: "zhihu",
-        position: pos,
-        category: "social",
-      }),
-    )
+    const parsed = extract(match)
+    if (!parsed) continue
+    results.push(makeZhihuResult(parsed.title, parsed.href, parsed.snippet, results.length + 1))
   }
-
-  // 模式 2：搜索结果卡片（知乎新版页面）
-  const pattern2 = /<div[^>]*class="[^"]*[Ss]earch[_-][Rr]esult[_-][Ii]tem[^"]*"[^>]*>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>[\s\S]*?<span[^>]*class="[^"]*[Rr]ich[Ww]ord[^"]*"[^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/a>/gi
-
-  if (results.length === 0) {
-    while ((match = pattern2.exec(html)) !== null) {
-      if (results.length >= maxResults) break
-
-      let href = match[1].trim()
-      const title = match[2].replace(/<[^>]+>/g, "").trim()
-
-      if (!title || !href) continue
-      if (href.startsWith("/")) href = `${BASE_URL}${href}`
-      else if (!href.startsWith("http")) href = `${BASE_URL}/${href}`
-
-      pos++
-      results.push(
-        makeSearchResult({
-          title,
-          url: href,
-          snippet: "知乎回答",
-          engine: "zhihu",
-          position: pos,
-          category: "social",
-        }),
-      )
-    }
-  }
-
-  // 模式 3：兜底——任何带知乎链接和标题的 a 标签
-  const pattern3 = /<a[^>]*href="(\/question\/[^"]*|\/answer\/[^"]*|\/people\/[^"]*|\/p\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi
-
-  if (results.length === 0) {
-    while ((match = pattern3.exec(html)) !== null) {
-      if (results.length >= maxResults) break
-
-      let href = match[1].trim()
-      const title = match[2].replace(/<[^>]+>/g, "").trim()
-
-      if (!title) continue
-      href = `${BASE_URL}${href}`
-
-      pos++
-      results.push(
-        makeSearchResult({
-          title,
-          url: href,
-          snippet: "知乎内容",
-          engine: "zhihu",
-          position: pos,
-          category: "social",
-        }),
-      )
-    }
-  }
-
   return results
+}
+
+
+function normalizeZhihuUrl(href: string): string {
+  if (href.startsWith("/")) return `${BASE_URL}${href}`
+  if (!href.startsWith("http")) return `${BASE_URL}/${href}`
+  return href
+}
+
+function makeZhihuResult(title: string, url: string, snippet: string, position: number): SearchResult {
+  return makeSearchResult({
+    title,
+    url,
+    snippet,
+    engine: "zhihu",
+    position,
+    category: "social",
+  })
 }
 
 export * as ZhihuEngine from "./zhihu"

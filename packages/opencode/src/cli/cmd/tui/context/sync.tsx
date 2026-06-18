@@ -81,6 +81,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       banned_phrases: {
         [sessionID: string]: Array<{ phrase: string; grace: number; maxGrace: number }>
       }
+      proxy_state: {
+        [sessionID: string]: { decision: "enabled" | "disabled"; proxyUrl: string } | null
+      }
     }>({
       provider_next: {
         all: [],
@@ -101,6 +104,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session_status: {},
       session_diff: {},
       banned_phrases: {},
+      proxy_state: {},
       todo: {},
       message: {},
       part: {},
@@ -145,6 +149,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     event.subscribe((event, { workspace }) => {
       if (event.type === "session.banned_phrases") {
         setStore("banned_phrases", event.properties.sessionID, event.properties.phrases)
+        return
+      }
+      if (event.type === "session.proxy_state") {
+        setStore("proxy_state", event.properties.sessionID, event.properties.state ?? null)
         return
       }
       switch (event.type) {
