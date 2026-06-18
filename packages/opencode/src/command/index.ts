@@ -4,6 +4,7 @@ import type { InstanceContext } from "@/project/instance-context"
 import { SessionID, MessageID } from "@/session/schema"
 import { Effect, Layer, Context, Schema } from "effect"
 import { Config } from "@/config/config"
+import { Installation } from "@/installation"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
 import { EventV2 } from "@opencode-ai/core/event"
@@ -38,7 +39,11 @@ export const Info = Schema.Struct({
   hints: Schema.Array(Schema.String),
 }).annotate({ identifier: "Command" })
 
-export type Info = Omit<Schema.Schema.Type<typeof Info>, "template"> & { template: Promise<string> | string }
+export type Info = Omit<Schema.Schema.Type<typeof Info>, "template"> & {
+  template: Promise<string> | string
+  /** 直接执行工具（不经过模型），存在时优先于 template */
+  execute?: (ctx: { worktree: string; directory: string }) => Effect.Effect<string>
+}
 
 export function hints(template: string) {
   const result: string[] = []
@@ -99,6 +104,50 @@ export const layer = Layer.effect(
         source: "command",
         template: "/stop-evolve",
         hints: [],
+      }
+
+      // 源码模式（Installation.isLocal()）下暴露构建命令到 slash 菜单，直接执行工具
+      if (Installation.isLocal()) {
+        commands["build"] = {
+          name: "build",
+          description: "构建 opencode 自身（源码模式）",
+          source: "command",
+          template: "build",
+          hints: [],
+          execute: (toolCtx) =>
+            Effect.gen(function* () {
+              const { pathToFileURL } = yield* Effect.promise(() => import("url"))
+              const mPath = yield* Effect.promise(() => import("path"))
+              const toolPath = mPath.join(toolCtx.worktree, ".opencode", "tool", "build_opencode.ts")
+              const mod = yield* Effect.promise(() => import(pathToFileURL(toolPath).href))
+              const fn = mod.default?.execute
+              if (!fn) return `错误：未找到 build_opencode 工具`
+              const result = yield* Effect.promise(() =>
+                fn({}, { worktree: toolCtx.worktree, directory: toolCtx.directory }),
+              )
+              return typeof result === "string" ? result : (result as any).output ?? String(result)
+            }),
+        }
+        commands["build-and-deploy"] = {
+          name: "build-and-deploy",
+          description: "构建 opencode 并部署到全局安装位置（源码模式）",
+          source: "command",
+          template: "build-and-deploy",
+          hints: [],
+          execute: (toolCtx) =>
+            Effect.gen(function* () {
+              const { pathToFileURL } = yield* Effect.promise(() => import("url"))
+              const mPath = yield* Effect.promise(() => import("path"))
+              const toolPath = mPath.join(toolCtx.worktree, ".opencode", "tool", "build_and_deploy_opencode.ts")
+              const mod = yield* Effect.promise(() => import(pathToFileURL(toolPath).href))
+              const fn = mod.default?.execute
+              if (!fn) return `错误：未找到 build_and_deploy_opencode 工具`
+              const result = yield* Effect.promise(() =>
+                fn({}, { worktree: toolCtx.worktree, directory: toolCtx.directory }),
+              )
+              return typeof result === "string" ? result : (result as any).output ?? String(result)
+            }),
+        }
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

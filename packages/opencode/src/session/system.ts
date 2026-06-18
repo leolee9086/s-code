@@ -252,15 +252,18 @@ export const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         const toolDir = path.join(ctx.worktree, ".opencode", "tool")
 
-        // 读目录（允许失败）
-        let entries: fs.Dirent[]
-        try {
-          entries = yield* Effect.promise(() =>
-            fs.promises.readdir(toolDir, { withFileTypes: true }),
-          )
-        } catch {
-          return undefined
-        }
+        // 目录不存在时优雅降级。
+        // 注意：不能用 try/catch 包裹 yield* Effect.promise —— 在 Effect.fn 的
+        // generator 内，失败的 Effect 通过 runtime 续体链流动，不会经由 JS
+        // generator 的 throw() 机制，因此 try/catch 无法捕获，ENOENT 会穿透
+        // 到上层变成 500。这里用 existsSync 预检 + promise 本身的 .catch 双保险，
+        // 与下方 stat 的写法保持一致。
+        if (!fs.existsSync(toolDir)) return undefined
+
+        const entries = yield* Effect.promise(() =>
+          fs.promises.readdir(toolDir, { withFileTypes: true }).catch(() => null),
+        )
+        if (!entries) return undefined
 
         // 过滤 .ts 文件（排除 _ 前缀的内部文件），收集 name + mtime
         const files: { name: string; mtime: number }[] = []

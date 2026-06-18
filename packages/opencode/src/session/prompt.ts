@@ -2146,6 +2146,56 @@ export const layer = Layer.effect(
         yield* events.publish(Session.Event.Error, { sessionID: input.sessionID, error: error.toObject() })
         throw error
       }
+
+      // 直接执行工具（不经过模型）
+      if (cmd.execute) {
+        const insCtx = yield* InstanceState.context
+        const output = yield* cmd.execute(insCtx)
+
+        const cmdAgent = yield* agents.defaultInfo().pipe(Effect.orDie)
+        const model = input.model
+          ? Provider.parseModel(input.model)
+          : yield* currentModel(input.sessionID).pipe(Effect.orDie)
+
+        const last = yield* lastAssistant(input.sessionID).pipe(Effect.option)
+        const parentID = Option.isSome(last) ? last.value.info.id : MessageID.ascending()
+
+        const assistantMsg: SessionV1.Assistant = yield* sessions.updateMessage({
+          id: MessageID.ascending(),
+          role: "assistant",
+          sessionID: input.sessionID,
+          time: { created: Date.now() },
+          agent: input.agent ?? cmdAgent.name,
+          modelID: model.modelID,
+          providerID: model.providerID,
+          mode: "default",
+          parentID,
+          path: { cwd: insCtx.directory, root: insCtx.worktree },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          finish: "stop",
+        })
+
+        const textPart: SessionV1.TextPart = {
+          id: PartID.ascending(),
+          messageID: assistantMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          text: output,
+          synthetic: true,
+        }
+        yield* sessions.updatePart(textPart)
+
+        yield* events.publish(Command.Event.Executed, {
+          name: input.command,
+          sessionID: input.sessionID,
+          arguments: input.arguments,
+          messageID: assistantMsg.id,
+        })
+
+        return { info: assistantMsg, parts: [textPart] }
+      }
+
       const agentName = cmd.agent ?? input.agent
 
       const raw = input.arguments.match(argsRegex) ?? []
