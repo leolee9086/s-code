@@ -4,8 +4,9 @@ import { Session } from "@/session/session"
 import { Effect } from "effect"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { nextTuiRequest, submitTuiResponse } from "@/server/shared/tui-control"
+import * as ProxyState from "@/search/proxy-state"
 import { InstanceHttpApi } from "../api"
-import { CommandPayload, TuiPublishPayload } from "../groups/tui"
+import { CommandPayload, ProxyTogglePayload, TuiPublishPayload } from "../groups/tui"
 import * as SessionError from "./session-errors"
 
 const commandAliases = {
@@ -113,6 +114,13 @@ export const tuiHandlers = HttpApiBuilder.group(InstanceHttpApi, "tui", (handler
       return true
     })
 
+    const proxyToggle = Effect.fn("TuiHttpApi.proxyToggle")(function* (ctx: {
+      payload: typeof ProxyTogglePayload.Type
+    }) {
+      yield* ProxyState.toggle(ctx.payload.sessionID)
+      return true
+    })
+
     return handlers
       .handle("appendPrompt", appendPrompt)
       .handle("openHelp", openHelp)
@@ -127,5 +135,6 @@ export const tuiHandlers = HttpApiBuilder.group(InstanceHttpApi, "tui", (handler
       .handle("selectSession", selectSession)
       .handle("controlNext", controlNext)
       .handle("controlResponse", controlResponse)
+      .handle("proxyToggle", proxyToggle)
   }),
 )

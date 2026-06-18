@@ -274,6 +274,8 @@ import type {
   TuiOpenSessionsResponses,
   TuiOpenThemesErrors,
   TuiOpenThemesResponses,
+  TuiProxyToggleErrors,
+  TuiProxyToggleResponses,
   TuiPublishErrors,
   TuiPublishResponses,
   TuiSelectSessionErrors,
@@ -5234,6 +5236,43 @@ export class Tui extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<TuiSelectSessionResponses, TuiSelectSessionErrors, ThrowOnError>({
       url: "/tui/select-session",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Toggle system proxy
+   *
+   * Toggle the system proxy on/off for the specified session.
+   */
+  public proxyToggle<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      sessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<TuiProxyToggleResponses, TuiProxyToggleErrors, ThrowOnError>({
+      url: "/tui/proxy-toggle",
       ...options,
       ...params,
       headers: {

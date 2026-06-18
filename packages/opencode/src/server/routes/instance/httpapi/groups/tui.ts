@@ -1,5 +1,6 @@
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { TuiRequest as TuiRequestPayload } from "@/server/shared/tui-control"
+import { SessionID as SessionIDSchema } from "@/session/schema"
 import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
@@ -10,6 +11,7 @@ import { described } from "./metadata"
 
 const root = "/tui"
 export const CommandPayload = Schema.Struct({ command: Schema.String })
+export const ProxyTogglePayload = Schema.Struct({ sessionID: SessionIDSchema })
 const EventTuiPromptAppend = Schema.Struct({
   type: Schema.Literal(TuiEvent.PromptAppend.type),
   properties: TuiEvent.PromptAppend.data,
@@ -47,6 +49,7 @@ export const TuiPaths = {
   selectSession: `${root}/select-session`,
   controlNext: `${root}/control/next`,
   controlResponse: `${root}/control/response`,
+  proxyToggle: `${root}/proxy-toggle`,
 } as const
 
 export const TuiApi = HttpApi.make("tui")
@@ -191,6 +194,17 @@ export const TuiApi = HttpApi.make("tui")
             identifier: "tui.control.response",
             summary: "Submit TUI response",
             description: "Submit a response to the TUI request queue to complete a pending request.",
+          }),
+        ),
+        HttpApiEndpoint.post("proxyToggle", TuiPaths.proxyToggle, {
+          query: WorkspaceRoutingQuery,
+          payload: ProxyTogglePayload,
+          success: described(Schema.Boolean, "Proxy toggled successfully"),
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "tui.proxyToggle",
+            summary: "Toggle system proxy",
+            description: "Toggle the system proxy on/off for the specified session.",
           }),
         ),
       )

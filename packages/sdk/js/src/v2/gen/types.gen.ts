@@ -9496,6 +9496,36 @@ export type TuiControlResponseResponses = {
 
 export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
 
+export type TuiProxyToggleData = {
+  body?: {
+    sessionID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/tui/proxy-toggle"
+}
+
+export type TuiProxyToggleErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type TuiProxyToggleError = TuiProxyToggleErrors[keyof TuiProxyToggleErrors]
+
+export type TuiProxyToggleResponses = {
+  /**
+   * Proxy toggled successfully
+   */
+  200: boolean
+}
+
+export type TuiProxyToggleResponse = TuiProxyToggleResponses[keyof TuiProxyToggleResponses]
+
 export type ExperimentalWorkspaceAdapterListData = {
   body?: never
   path?: never

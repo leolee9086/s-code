@@ -1,9 +1,6 @@
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { InternalTuiPlugin } from "../../plugin/internal"
 import { createMemo, Show } from "solid-js"
-import { Effect } from "effect"
-import * as ProxyState from "@/search/proxy-state"
-import type { SessionID } from "@/session/schema"
 
 const id = "internal:sidebar-proxy-toggle"
 
@@ -14,7 +11,8 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
   const enabled = createMemo(() => state()?.decision === "enabled")
 
   const toggle = () => {
-    void Effect.runPromise(ProxyState.toggle(props.session_id as SessionID)).catch(() => {})
+    // 通过 HTTP API 在服务器进程执行 toggle，状态变更经 SSE 推送回 TUI
+    void props.api.client.tui.proxyToggle({ sessionID: props.session_id }).catch(() => {})
   }
 
   return (
